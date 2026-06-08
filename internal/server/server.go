@@ -416,7 +416,7 @@ const indexTemplate = `<!doctype html>
     .clock { display: grid; gap: 4px; padding-bottom: 6px; }
     .clock-time { font-size: clamp(24px, 3vw, 36px); line-height: 1; font-weight: 800; }
     .clock-date { color: var(--muted); font-size: 16px; }
-    .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid #b8bcc6; border-radius: 18px; display: grid; grid-template-columns: 42px 1fr 44px; align-items: center; padding: 0 12px; }
+    .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid #b8bcc6; border-radius: 18px; display: grid; grid-template-columns: 42px 1fr; align-items: center; padding: 0 14px; }
     .search-wrap iconify-icon { color: #fff; font-size: 24px; }
     .search { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 18px; }
     .search::placeholder { color: #9ea4b0; }
@@ -517,7 +517,7 @@ const indexTemplate = `<!doctype html>
         <h1>{{.Title}}</h1>
         <div class="clock"><div class="clock-time" id="clock-time">--:--:--</div><div class="clock-date" id="clock-date">--</div></div>
       </div>
-      <div class="search-wrap"><iconify-icon icon="logos:google-icon"></iconify-icon><input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"><iconify-icon icon="mdi:magnify"></iconify-icon></div>
+      <div class="search-wrap"><iconify-icon icon="mdi:magnify"></iconify-icon><input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"></div>
     </section>
 
     <section class="groups">
