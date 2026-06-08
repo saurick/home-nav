@@ -522,10 +522,10 @@ const indexTemplate = `<!doctype html>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
-            <button class="icon-button" type="button" aria-label="{{.Name}}">
+            <a class="icon-button" href="{{.DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
               {{if .IconIsOnline}}<img src="{{.IconImageSrc}}" alt="">{{else if .IconIsImage}}<img src="{{.Icon}}" alt="">{{else}}<span class="icon-fallback">{{.DisplayIconText}}</span>{{end}}
               <span class="health-dot" data-status="unknown"></span>
-            </button>
+            </a>
             <div class="app-name">{{.Name}}</div>
           </div>
           {{end}}
@@ -590,11 +590,6 @@ const indexTemplate = `<!doctype html>
     function normalize(value) { return (value || '').trim().toLowerCase(); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
-    function defaultURL(item) { return item?.dataset.externalUrl || item?.dataset.internalUrl || ''; }
-    function openDefault(item) {
-      const url = defaultURL(item);
-      url ? window.open(url, '_blank', 'noreferrer') : showToast('没有可打开的入口');
-    }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
@@ -724,9 +719,9 @@ const indexTemplate = `<!doctype html>
       button.addEventListener('click', event => {
         if (suppressClick) {
           suppressClick = false;
+          event.preventDefault();
           return;
         }
-        openDefault(item);
       });
       button.addEventListener('contextmenu', event => {
         event.preventDefault();

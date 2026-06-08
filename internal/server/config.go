@@ -96,6 +96,13 @@ func (s Service) IconImageSrc() string {
 	return "/.iconify/" + url.PathEscape(collection) + "/" + url.PathEscape(name) + ".svg"
 }
 
+func (s Service) DefaultURL() string {
+	if s.ExternalURL != "" {
+		return s.ExternalURL
+	}
+	return s.InternalURL
+}
+
 type HealthCheck struct {
 	Type         string        `yaml:"type"`
 	URL          string        `yaml:"url"`
