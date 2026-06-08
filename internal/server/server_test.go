@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,6 +54,247 @@ func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
 	}
 	if payload.Services["drawio"].Status != StatusDisabled {
 		t.Fatalf("expected disabled drawio, got %#v", payload.Services["drawio"])
+	}
+}
+
+func TestAuthProtectsIndexAndStatus(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRec := httptest.NewRecorder()
+	srv.ServeHTTP(indexRec, indexReq)
+	if indexRec.Code != http.StatusSeeOther {
+		t.Fatalf("expected index redirect, got %d", indexRec.Code)
+	}
+	if got := indexRec.Header().Get("Location"); got != "/login" {
+		t.Fatalf("unexpected redirect: %q", got)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	statusRec := httptest.NewRecorder()
+	srv.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized status, got %d", statusRec.Code)
+	}
+}
+
+func TestAuthLoginFlow(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	testServer := httptest.NewServer(srv)
+	defer testServer.Close()
+
+	client := testServer.Client()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookie jar: %v", err)
+	}
+	client.Jar = jar
+
+	badResp, err := client.PostForm(testServer.URL+"/login", map[string][]string{
+		"username": {"admin"},
+		"password": {"bad-password"},
+	})
+	if err != nil {
+		t.Fatalf("bad login request failed: %v", err)
+	}
+	_ = badResp.Body.Close()
+	if badResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected bad login page, got %d", badResp.StatusCode)
+	}
+
+	goodResp, err := client.PostForm(testServer.URL+"/login?return_to=/api/status", map[string][]string{
+		"username": {"admin"},
+		"password": {"test-password"},
+	})
+	if err != nil {
+		t.Fatalf("good login request failed: %v", err)
+	}
+	defer goodResp.Body.Close()
+	if goodResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected redirected api status, got %d", goodResp.StatusCode)
+	}
+	var payload StatusResponse
+	if err := json.NewDecoder(goodResp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if len(payload.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(payload.Services))
+	}
+}
+
+func TestServiceUpdateSavesConfig(t *testing.T) {
+	configPath := writeTempConfig(t, authTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	body := []byte(`{
+		"name": "Renamed App",
+		"description": "更新后的入口",
+		"icon_text": "RA",
+		"icon": "mdi:application",
+		"internal_url": "http://app.example.local/new",
+		"external_url": "https://app.example.test",
+		"tags": ["ops", "tools"],
+		"notes": "保存测试",
+		"group_id": "ops",
+		"health": {
+			"type": "http",
+			"url": "http://app.example.local/healthz",
+			"expect_status": 204,
+			"timeout": "1500ms"
+		}
+	}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/services/app", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	got := cfg.Groups[0].Services[0]
+	if got.Name != "Renamed App" || got.Icon != "mdi:application" {
+		t.Fatalf("service was not saved: %#v", got)
+	}
+	if got.Health.Type != "http" || got.Health.ExpectStatus != 204 || got.Health.Timeout != 1500*time.Millisecond {
+		t.Fatalf("health was not saved: %#v", got.Health)
+	}
+}
+
+func TestServesConfiguredUploadAssets(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "icon.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0600); err != nil {
+		t.Fatalf("write icon: %v", err)
+	}
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+assets:
+  uploads_dir: `+dir+`
+  uploads_url_prefix: /uploads/
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        icon: /uploads/icon.svg
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/uploads/icon.svg", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("expected icon body")
+	}
+}
+
+func TestServesCachedIconifyIcon(t *testing.T) {
+	cacheDir := t.TempDir()
+	iconDir := filepath.Join(cacheDir, "mdi")
+	if err := os.MkdirAll(iconDir, 0700); err != nil {
+		t.Fatalf("mkdir icon dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(iconDir, "nas.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg"><path fill="white"/></svg>`), 0600); err != nil {
+		t.Fatalf("write icon cache: %v", err)
+	}
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+assets:
+  icon_cache_dir: `+cacheDir+`
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        icon: mdi:nas
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/.iconify/mdi/nas.svg", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+		t.Fatalf("unexpected content type: %q", got)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("expected icon body")
+	}
+}
+
+func TestSaveConfigRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "services.yaml")
+	cfg := &Config{
+		Title:         "测试导航",
+		CheckInterval: 30 * time.Second,
+		Groups: []Group{
+			{
+				ID:   "tools",
+				Name: "工具",
+				Services: []Service{
+					{
+						ID:          "tool",
+						Name:        "Tool",
+						Icon:        "mdi:tools",
+						ExternalURL: "https://example.com/path?a=1#section",
+						Tags:        nil,
+						Health: HealthCheck{
+							Type:    "disabled",
+							Timeout: 2 * time.Second,
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	got := loaded.Groups[0].Services[0]
+	if got.ExternalURL != "https://example.com/path?a=1#section" {
+		t.Fatalf("unexpected external url: %q", got.ExternalURL)
+	}
+	if len(got.Tags) != 0 {
+		t.Fatalf("expected empty tags, got %#v", got.Tags)
 	}
 }
 
@@ -142,4 +385,26 @@ func writeTempConfig(t *testing.T, content string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
+}
+
+func authTestConfig() string {
+	return `
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`
 }

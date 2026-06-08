@@ -2,6 +2,18 @@ title: 个人服务导航
 subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 
+auth:
+  enabled: false
+  username: admin
+  password: change-me
+  session_secret: change-this-to-at-least-32-random-characters
+  session_ttl: 24h
+
+assets:
+  uploads_dir: ""
+  uploads_url_prefix: /uploads/
+  icon_cache_dir: ""
+
 groups:
   - id: ops
     name: 运维工具

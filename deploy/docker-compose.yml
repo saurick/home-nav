@@ -6,10 +6,13 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ../config.example.yaml:/app/services.yaml:ro
+      - ../config.example.yaml:/app/services.yaml
+      # 如果 services.yaml 里配置了 assets.uploads_dir: /app/uploads，可挂载上传图标目录。
+      # - ./uploads:/app/uploads:ro
+      # 如果 services.yaml 里配置了 assets.icon_cache_dir: /app/icon-cache，可持久化在线图标缓存。
+      # - ./icon-cache:/app/icon-cache
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 3s
       retries: 3
-

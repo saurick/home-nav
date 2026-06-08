@@ -22,8 +22,24 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 type Config struct {
 	Title         string        `yaml:"title"`
 	Subtitle      string        `yaml:"subtitle"`
+	Auth          AuthConfig    `yaml:"auth"`
+	Assets        AssetsConfig  `yaml:"assets"`
 	CheckInterval time.Duration `yaml:"check_interval"`
 	Groups        []Group       `yaml:"groups"`
+}
+
+type AssetsConfig struct {
+	UploadsDir       string `yaml:"uploads_dir"`
+	UploadsURLPrefix string `yaml:"uploads_url_prefix"`
+	IconCacheDir     string `yaml:"icon_cache_dir"`
+}
+
+type AuthConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	Username      string        `yaml:"username"`
+	Password      string        `yaml:"password"`
+	SessionSecret string        `yaml:"session_secret"`
+	SessionTTL    time.Duration `yaml:"session_ttl"`
 }
 
 type Group struct {
@@ -59,6 +75,25 @@ func (s Service) DisplayIconText() string {
 		return "?"
 	}
 	return strings.ToUpper(string(r))
+}
+
+func (s Service) IconIsImage() bool {
+	return strings.HasPrefix(s.Icon, "http://") || strings.HasPrefix(s.Icon, "https://") || strings.HasPrefix(s.Icon, "/")
+}
+
+func (s Service) IconIsOnline() bool {
+	return s.Icon != "" && strings.Contains(s.Icon, ":") && !s.IconIsImage()
+}
+
+func (s Service) IconImageSrc() string {
+	if !s.IconIsOnline() {
+		return s.Icon
+	}
+	collection, name, ok := strings.Cut(s.Icon, ":")
+	if !ok || collection == "" || name == "" {
+		return ""
+	}
+	return "/.iconify/" + url.PathEscape(collection) + "/" + url.PathEscape(name) + ".svg"
 }
 
 type HealthCheck struct {
@@ -100,6 +135,12 @@ func (c *Config) NormalizeAndValidate() error {
 	if c.CheckInterval < 5*time.Second {
 		return fmt.Errorf("配置错误: check_interval 不能小于 5s")
 	}
+	if err := normalizeAuth(&c.Auth); err != nil {
+		return err
+	}
+	if err := normalizeAssets(&c.Assets); err != nil {
+		return err
+	}
 	if len(c.Groups) == 0 {
 		return fmt.Errorf("配置错误: groups 不能为空")
 	}
@@ -134,6 +175,68 @@ func (c *Config) NormalizeAndValidate() error {
 	}
 	if len(serviceIDs) == 0 {
 		return fmt.Errorf("配置错误: 至少需要配置一个服务")
+	}
+	return nil
+}
+
+func normalizeAssets(assets *AssetsConfig) error {
+	assets.UploadsDir = strings.TrimSpace(assets.UploadsDir)
+	assets.UploadsURLPrefix = strings.TrimSpace(assets.UploadsURLPrefix)
+	assets.IconCacheDir = strings.TrimSpace(assets.IconCacheDir)
+	if assets.UploadsURLPrefix == "" {
+		assets.UploadsURLPrefix = "/uploads/"
+	}
+	if assets.UploadsDir == "" && assets.IconCacheDir == "" {
+		return nil
+	}
+	if assets.UploadsDir != "" && (!strings.HasPrefix(assets.UploadsURLPrefix, "/") || !strings.HasSuffix(assets.UploadsURLPrefix, "/")) {
+		return fmt.Errorf("配置错误: assets.uploads_url_prefix 必须以 / 开头并以 / 结尾")
+	}
+	if assets.UploadsDir != "" {
+		info, err := os.Stat(assets.UploadsDir)
+		if err != nil {
+			return fmt.Errorf("配置错误: assets.uploads_dir 不可访问: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("配置错误: assets.uploads_dir 必须是目录")
+		}
+	}
+	if assets.IconCacheDir != "" {
+		if err := os.MkdirAll(assets.IconCacheDir, 0700); err != nil {
+			return fmt.Errorf("配置错误: assets.icon_cache_dir 不可创建: %w", err)
+		}
+		info, err := os.Stat(assets.IconCacheDir)
+		if err != nil {
+			return fmt.Errorf("配置错误: assets.icon_cache_dir 不可访问: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("配置错误: assets.icon_cache_dir 必须是目录")
+		}
+	}
+	return nil
+}
+
+func normalizeAuth(auth *AuthConfig) error {
+	auth.Username = strings.TrimSpace(auth.Username)
+	auth.Password = strings.TrimSpace(auth.Password)
+	auth.SessionSecret = strings.TrimSpace(auth.SessionSecret)
+	if auth.SessionTTL == 0 {
+		auth.SessionTTL = 24 * time.Hour
+	}
+	if auth.SessionTTL < time.Minute {
+		return fmt.Errorf("配置错误: auth.session_ttl 不能小于 1m")
+	}
+	if !auth.Enabled {
+		return nil
+	}
+	if auth.Username == "" {
+		return fmt.Errorf("配置错误: auth.username 不能为空")
+	}
+	if auth.Password == "" {
+		return fmt.Errorf("配置错误: auth.password 不能为空")
+	}
+	if len(auth.SessionSecret) < 32 {
+		return fmt.Errorf("配置错误: auth.session_secret 至少需要 32 个字符")
 	}
 	return nil
 }

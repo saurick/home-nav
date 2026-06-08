@@ -89,6 +89,47 @@ func (c *StatusCache) Snapshot() StatusResponse {
 	}
 }
 
+func (c *StatusCache) UpdateConfig(cfg *Config) {
+	c.mu.RLock()
+	oldStatuses := make(map[string]ServiceStatus, len(c.statuses))
+	for id, status := range c.statuses {
+		oldStatuses[id] = status
+	}
+	c.mu.RUnlock()
+
+	statuses := make(map[string]ServiceStatus)
+	var services []Service
+	for _, group := range cfg.Groups {
+		for _, service := range group.Services {
+			services = append(services, service)
+			if old, ok := oldStatuses[service.ID]; ok && old.Type == service.Health.Type {
+				old.Name = service.Name
+				old.GroupID = service.GroupID
+				old.GroupName = service.GroupName
+				statuses[service.ID] = old
+				continue
+			}
+			status := StatusUnknown
+			if service.Health.Type == "disabled" {
+				status = StatusDisabled
+			}
+			statuses[service.ID] = ServiceStatus{
+				ID:        service.ID,
+				Name:      service.Name,
+				GroupID:   service.GroupID,
+				GroupName: service.GroupName,
+				Type:      service.Health.Type,
+				Status:    status,
+			}
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.services = services
+	c.statuses = statuses
+}
+
 func (c *StatusCache) Start(ctx context.Context, interval time.Duration) {
 	go func() {
 		c.CheckAll(ctx)
@@ -106,8 +147,9 @@ func (c *StatusCache) Start(ctx context.Context, interval time.Duration) {
 }
 
 func (c *StatusCache) CheckAll(ctx context.Context) {
+	services := c.servicesSnapshot()
 	var wg sync.WaitGroup
-	for _, service := range c.services {
+	for _, service := range services {
 		service := service
 		wg.Add(1)
 		go func() {
@@ -116,6 +158,14 @@ func (c *StatusCache) CheckAll(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
+}
+
+func (c *StatusCache) servicesSnapshot() []Service {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	services := make([]Service, len(c.services))
+	copy(services, c.services)
+	return services
 }
 
 func (c *StatusCache) setStatus(status ServiceStatus) {
