@@ -96,6 +96,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/services/", s.handleService)
+	s.mux.HandleFunc("/api/uploads", s.handleUpload)
 	s.mux.HandleFunc("/.iconify/", s.handleIconifyIcon)
 	if s.cfg.Assets.UploadsDir != "" {
 		s.mux.Handle(s.cfg.Assets.UploadsURLPrefix, http.StripPrefix(s.cfg.Assets.UploadsURLPrefix, http.FileServer(http.Dir(s.cfg.Assets.UploadsDir))))
@@ -472,6 +473,10 @@ const indexTemplate = `<!doctype html>
     .field input, .field textarea, .field select { width: 100%; min-height: 56px; border: 1px solid transparent; border-radius: 6px; background: #48484f; color: #f3f3f7; padding: 0 18px; font-size: 20px; outline: 0; }
     .field textarea { min-height: 92px; padding-top: 14px; resize: vertical; line-height: 1.45; }
     .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,182,.15); }
+    .icon-field-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .upload-button { min-height: 56px; border: 1px solid #73737d; border-radius: 6px; background: #3d3d45; color: #f3f3f7; padding: 0 18px; cursor: pointer; white-space: nowrap; }
+    .upload-button:hover { background: #50505a; }
+    .file-input { position: fixed; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
     .form-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 30px; }
     .save-button, .delete-button { min-width: 118px; min-height: 58px; border: 0; border-radius: 7px; font-size: 24px; cursor: pointer; }
     .save-button { background: var(--accent); color: #050505; }
@@ -553,7 +558,7 @@ const indexTemplate = `<!doctype html>
           <div class="field"><label>名称 *</label><input name="name" maxlength="80" required></div>
           <div class="field"><label>描述</label><input name="description" maxlength="140"></div>
           <div class="field"><label>图标文字</label><input name="icon_text" maxlength="12" placeholder="NAS"></div>
-          <div class="field"><label>在线图标名或图片 URL <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noreferrer">在线图标库</a></label><input name="icon" placeholder="mdi:nas"></div>
+          <div class="field"><label>在线图标名或图片 URL <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noreferrer">在线图标库</a></label><div class="icon-field-row"><input name="icon" placeholder="mdi:nas"><button class="upload-button" type="button" id="upload-icon-button">上传图片</button></div><input class="file-input" id="upload-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"></div>
           <div class="field full"><label>外网入口</label><input name="external_url" type="url" placeholder="https://example.com"></div>
           <div class="field full"><label>内网入口</label><input name="internal_url" type="url" placeholder="http://192.168.x.x:8080"></div>
           <div class="field"><label>分组</label><select name="group_id">{{range .Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
@@ -579,6 +584,8 @@ const indexTemplate = `<!doctype html>
     const backdrop = document.querySelector('#edit-backdrop');
     const form = document.querySelector('#edit-form');
     const toast = document.querySelector('#toast');
+    const uploadButton = document.querySelector('#upload-icon-button');
+    const uploadFile = document.querySelector('#upload-icon-file');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     let activeItem = null;
 
@@ -711,6 +718,28 @@ const indexTemplate = `<!doctype html>
       showToast('已保存');
       setTimeout(() => location.reload(), 500);
     }
+    async function uploadIcon(file) {
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      uploadButton.disabled = true;
+      uploadButton.textContent = '上传中';
+      try {
+        const response = await fetch('/api/uploads', { method: 'POST', body: formData });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showToast(payload.error || '上传失败');
+          return;
+        }
+        form.icon.value = payload.url || '';
+        refreshPreview();
+        showToast('图片已上传');
+      } finally {
+        uploadButton.disabled = false;
+        uploadButton.textContent = '上传图片';
+        uploadFile.value = '';
+      }
+    }
 
     for (const item of items) {
       const button = item.querySelector('.icon-button');
@@ -754,6 +783,8 @@ const indexTemplate = `<!doctype html>
     backdrop.addEventListener('click', event => { if (event.target === backdrop) closeEdit(); });
     form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', saveItem);
+    uploadButton.addEventListener('click', () => uploadFile.click());
+    uploadFile.addEventListener('change', () => uploadIcon(uploadFile.files?.[0]));
     searchInput.addEventListener('input', applyFilters);
     updateClock(); setInterval(updateClock, 1000);
     applyFilters(); refreshStatus(); setInterval(refreshStatus, 30000);

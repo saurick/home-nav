@@ -8,7 +8,8 @@ services:
     volumes:
       - ../config.example.yaml:/app/services.yaml
       # 如果 services.yaml 里配置了 assets.uploads_dir: /app/uploads，可挂载上传图标目录。
-      # - ./uploads:/app/uploads:ro
+      # 编辑页上传图片需要读写挂载。
+      # - ./uploads:/app/uploads
       # 如果 services.yaml 里配置了 assets.icon_cache_dir: /app/icon-cache，可持久化在线图标缓存。
       # - ./icon-cache:/app/icon-cache
     healthcheck:

@@ -3,12 +3,14 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -210,6 +212,74 @@ groups:
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected icon body")
+	}
+}
+
+func TestUploadIcon(t *testing.T) {
+	dir := t.TempDir()
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+assets:
+  uploads_dir: `+dir+`
+  uploads_url_prefix: /uploads/
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "icon.svg")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if !strings.HasPrefix(payload.URL, "/uploads/") || !strings.HasSuffix(payload.URL, ".svg") {
+		t.Fatalf("unexpected upload url: %q", payload.URL)
+	}
+
+	assetReq := httptest.NewRequest(http.MethodGet, payload.URL, nil)
+	assetRec := httptest.NewRecorder()
+	srv.ServeHTTP(assetRec, assetReq)
+	if assetRec.Code != http.StatusOK {
+		t.Fatalf("expected uploaded asset status %d, got %d", http.StatusOK, assetRec.Code)
 	}
 }
 
