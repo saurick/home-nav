@@ -115,10 +115,13 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "window.confirm", "startDragPointer", "sortPayload"} {
+	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "id=\"delete-confirm-backdrop\"", "id=\"confirm-delete-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "openDeleteConfirm", "performDelete", "startDragPointer", "startMouseDrag", "dragPlaceholderFor", "requestAnimationFrame", "sortPayload"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
+	}
+	if strings.Contains(body, "window.confirm") {
+		t.Fatal("index should use the in-page delete confirmation modal instead of window.confirm")
 	}
 }
 

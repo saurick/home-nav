@@ -822,7 +822,9 @@ const indexTemplate = `<!doctype html>
 	    body.is-edit-mode .app-icon { cursor: grab; touch-action: none; }
 	    body.is-dragging, body.is-dragging * { user-select: none; }
 	    body.is-dragging .app-icon { cursor: grabbing; }
-	    .app-icon.is-dragging { opacity: .42; transform: scale(.96); }
+	    .app-icon.is-dragging { position: fixed; left: 0; top: 0; z-index: 70; opacity: .96; pointer-events: none; filter: drop-shadow(0 22px 34px rgba(0,0,0,.46)); transform: translate3d(0,0,0); will-change: transform; }
+	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: #242424; }
+	    .drag-placeholder { width: 100%; min-height: 122px; border-radius: 16px; outline: 2px dashed rgba(103,224,182,.38); outline-offset: -6px; background: rgba(103,224,182,.08); }
 	    .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
     .icon-button:hover { transform: translateY(-2px); background: #1f1f1f; }
     body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
@@ -852,6 +854,23 @@ const indexTemplate = `<!doctype html>
     .modal-backdrop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.62); z-index: 60; padding: 18px; }
     .modal-backdrop.is-open { display: grid; }
     .modal { width: min(1100px, 100%); max-height: min(860px, calc(100vh - 36px)); overflow: auto; border-radius: 28px; background: #2d2d35; color: #f7f7fb; box-shadow: 0 22px 80px rgba(0,0,0,.62); padding: 28px 32px 32px; }
+    .confirm-backdrop { z-index: 80; background: rgba(0,0,0,.72); }
+    .confirm-modal { width: min(480px, 100%); max-height: calc(100vh - 36px); overflow: auto; border-radius: 18px; background: #25252d; border: 1px solid #595a64; color: #f7f7fb; box-shadow: 0 26px 90px rgba(0,0,0,.68); padding: 26px; }
+    .confirm-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+    .confirm-mark { width: 46px; height: 46px; border-radius: 12px; background: rgba(231,125,130,.14); color: var(--danger); display: grid; place-items: center; flex: 0 0 auto; }
+    .confirm-mark iconify-icon { font-size: 26px; }
+    .confirm-title { margin: 0; font-size: 24px; line-height: 1.2; letter-spacing: 0; }
+    .confirm-body { margin: 0 0 8px; color: #e6e7ec; font-size: 17px; line-height: 1.55; }
+    .confirm-name { color: #fff; font-weight: 800; overflow-wrap: anywhere; }
+    .confirm-note { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+    .confirm-cancel, .confirm-delete { min-width: 106px; min-height: 48px; border: 0; border-radius: 8px; padding: 0 18px; font-size: 18px; font-weight: 800; cursor: pointer; }
+    .confirm-cancel { background: #454650; color: #f1f2f6; }
+    .confirm-cancel:hover { background: #555762; }
+    .confirm-delete { background: var(--danger); color: #050505; }
+    .confirm-delete:hover { background: #ff969b; }
+    .confirm-cancel:focus-visible, .confirm-delete:focus-visible { outline: 3px solid rgba(103,224,182,.42); outline-offset: 3px; }
+    .confirm-delete:disabled { cursor: default; opacity: .62; }
     .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; }
     .modal-title { margin: 0; font-size: 30px; }
     .close-button { width: 44px; height: 44px; border: 0; border-radius: 7px; background: #565660; color: #ddd; cursor: pointer; display: grid; place-items: center; }
@@ -888,7 +907,7 @@ const indexTemplate = `<!doctype html>
     .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #202026; color: #fff; border: 1px solid #555761; border-radius: 999px; padding: 10px 18px; display: none; z-index: 80; }
     .toast.is-open { display: block; }
     @media (max-width: 760px) {
-      .shell { width: min(100vw - 24px, 1240px); padding-top: 26px; }
+      .shell { width: min(100vw - 24px, 1240px); padding-top: 92px; }
       .top-tools { top: 12px; right: 12px; }
       .hero { margin-bottom: 34px; align-items: start; justify-items: stretch; }
       .title-row { justify-content: flex-start; align-items: flex-start; }
@@ -901,8 +920,12 @@ const indexTemplate = `<!doctype html>
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
       .icon-button iconify-icon { font-size: 36px; }
       .app-name { width: 78px; font-size: 13px; }
+      .drag-placeholder { min-height: 109px; border-radius: 14px; }
       .menu { left: 12px !important; right: 12px; top: auto !important; bottom: 12px; width: auto; }
       .modal { border-radius: 18px; padding: 22px 18px 24px; }
+      .confirm-modal { padding: 22px 18px; border-radius: 16px; }
+      .confirm-actions { flex-direction: column-reverse; }
+      .confirm-cancel, .confirm-delete { width: 100%; }
       .preview { grid-template-columns: 1fr; padding: 16px; }
       .preview-wide { justify-self: stretch; width: 100%; height: 110px; font-size: 22px; }
       .preview-square { width: 100%; }
@@ -1006,6 +1029,14 @@ const indexTemplate = `<!doctype html>
       </form>
     </section>
   </div>
+  <div class="modal-backdrop confirm-backdrop" id="delete-confirm-backdrop" aria-hidden="true">
+    <section class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-description">
+      <div class="confirm-head"><div class="confirm-mark"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></div><h2 class="confirm-title" id="delete-confirm-title">删除导航入口</h2></div>
+      <p class="confirm-body" id="delete-confirm-description">确定删除导航入口 <span class="confirm-name" id="delete-confirm-name">当前入口</span> 吗？</p>
+      <p class="confirm-note">只会从导航配置里移除入口，不会删除、停止或重启真实服务。</p>
+      <div class="confirm-actions"><button class="confirm-cancel" type="button" id="cancel-delete-button">取消</button><button class="confirm-delete" type="button" id="confirm-delete-button">删除</button></div>
+    </section>
+  </div>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -1015,6 +1046,7 @@ const indexTemplate = `<!doctype html>
     const menu = document.querySelector('#item-menu');
     const backdrop = document.querySelector('#edit-backdrop');
     const settingsBackdrop = document.querySelector('#settings-backdrop');
+    const deleteConfirmBackdrop = document.querySelector('#delete-confirm-backdrop');
     const form = document.querySelector('#edit-form');
     const settingsForm = document.querySelector('#settings-form');
     const toast = document.querySelector('#toast');
@@ -1024,19 +1056,23 @@ const indexTemplate = `<!doctype html>
     const uploadBackgroundFile = document.querySelector('#upload-background-file');
     const settingsPreview = document.querySelector('#settings-preview');
     const editTitle = document.querySelector('#edit-title');
-	    const saveButton = form.querySelector('.save-button');
-	    const deleteButton = document.querySelector('#delete-service-button');
-	    const saveSortButton = document.querySelector('#save-sort-button');
-	    const accessModeButton = document.querySelector('#access-mode-button');
+    const saveButton = form.querySelector('.save-button');
+    const deleteButton = document.querySelector('#delete-service-button');
+    const cancelDeleteButton = document.querySelector('#cancel-delete-button');
+    const confirmDeleteButton = document.querySelector('#confirm-delete-button');
+    const deleteConfirmName = document.querySelector('#delete-confirm-name');
+    const saveSortButton = document.querySelector('#save-sort-button');
+    const accessModeButton = document.querySelector('#access-mode-button');
     const accessModeIcon = document.querySelector('#access-mode-icon');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
-	    let activeItem = null;
-	    let editMode = false;
-	    let accessMode = 'external';
-	    let sortDirty = false;
-	    let dragState = null;
-	    let suppressNextEditClick = false;
+    let activeItem = null;
+    let editMode = false;
+    let accessMode = 'external';
+    let sortDirty = false;
+    let dragState = null;
+    let suppressNextEditClick = false;
+    let pendingDelete = null;
 
     function field(name) { return form.elements.namedItem(name); }
     function settingField(name) { return settingsForm.elements.namedItem(name); }
@@ -1284,22 +1320,43 @@ const indexTemplate = `<!doctype html>
       showToast(id ? '已保存' : '已新增');
       setTimeout(() => location.reload(), 500);
     }
-    async function deleteServiceByID(id, name) {
+    function openDeleteConfirm(id, name) {
       if (!id) return;
-      if (!window.confirm('确定删除“' + (name || '当前入口') + '”这个导航入口吗？')) return;
+      pendingDelete = { id, name: name || '当前入口' };
+      deleteConfirmName.textContent = '“' + pendingDelete.name + '”';
+      confirmDeleteButton.disabled = false;
+      confirmDeleteButton.textContent = '删除';
+      deleteConfirmBackdrop.classList.add('is-open');
+      deleteConfirmBackdrop.setAttribute('aria-hidden', 'false');
+      confirmDeleteButton.focus();
+    }
+    function closeDeleteConfirm() {
+      pendingDelete = null;
+      deleteConfirmBackdrop.classList.remove('is-open');
+      deleteConfirmBackdrop.setAttribute('aria-hidden', 'true');
+      confirmDeleteButton.disabled = false;
+      confirmDeleteButton.textContent = '删除';
+    }
+    async function performDelete() {
+      if (!pendingDelete?.id) return;
+      const id = pendingDelete.id;
+      confirmDeleteButton.disabled = true;
+      confirmDeleteButton.textContent = '删除中';
       const response = await fetch('/api/services/' + encodeURIComponent(id), { method: 'DELETE' });
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: '删除失败' }));
         showToast(error.error || '删除失败');
+        confirmDeleteButton.disabled = false;
+        confirmDeleteButton.textContent = '删除';
         return;
       }
       showToast('已删除');
       setTimeout(() => location.reload(), 500);
     }
     async function deleteItem() {
-      await deleteServiceByID(field('id').value, field('name').value);
+      openDeleteConfirm(field('id').value, field('name').value);
     }
-	    async function saveSettings(event) {
+    async function saveSettings(event) {
       event.preventDefault();
       const payload = {
         background_color: settingField('background_color').value,
@@ -1387,17 +1444,53 @@ const indexTemplate = `<!doctype html>
         uploadBackgroundFile.value = '';
       }
 	    }
+	    function dragPlaceholderFor(item) {
+	      const placeholder = document.createElement('div');
+	      placeholder.className = 'drag-placeholder';
+	      placeholder.setAttribute('aria-hidden', 'true');
+	      const rect = item.getBoundingClientRect();
+	      placeholder.style.minHeight = Math.round(rect.height) + 'px';
+	      return placeholder;
+	    }
+	    function positionDraggedItem(state) {
+	      state.frame = 0;
+	      if (!state.dragging) return;
+	      const x = state.lastX - state.offsetX;
+	      const y = state.lastY - state.offsetY;
+	      state.item.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
+	      placeDraggedItem(state.lastX, state.lastY);
+	      autoScrollWhileDragging(state.lastY);
+	    }
+	    function scheduleDragFrame(state) {
+	      if (state.frame) return;
+	      state.frame = window.requestAnimationFrame(() => positionDraggedItem(state));
+	    }
+	    function autoScrollWhileDragging(clientY) {
+	      const edge = 76;
+	      const maxStep = 18;
+	      let step = 0;
+	      if (clientY < edge) step = -Math.ceil((edge - clientY) / edge * maxStep);
+	      if (clientY > window.innerHeight - edge) step = Math.ceil((clientY - (window.innerHeight - edge)) / edge * maxStep);
+	      if (step) window.scrollBy({ top: step, behavior: 'auto' });
+	    }
 	    function beginDrag(state) {
 	      if (normalize(searchInput.value)) {
 	        suppressEditClickOnce();
 	        showToast('清空搜索后再排序');
 	        return false;
 	      }
+	      const rect = state.item.getBoundingClientRect();
+	      state.offsetX = state.startX - rect.left;
+	      state.offsetY = state.startY - rect.top;
+	      state.placeholder = dragPlaceholderFor(state.item);
+	      state.item.after(state.placeholder);
 	      state.dragging = true;
 	      state.item.classList.add('is-dragging');
-	      state.item.style.pointerEvents = 'none';
+	      state.item.style.width = Math.round(rect.width) + 'px';
+	      state.item.style.height = Math.round(rect.height) + 'px';
 	      document.body.classList.add('is-dragging');
 	      closeMenu();
+	      positionDraggedItem(state);
 	      return true;
 	    }
 	    function finishDrag() {
@@ -1407,8 +1500,12 @@ const indexTemplate = `<!doctype html>
 	        placeDraggedItem(state.lastX, state.lastY);
 	      }
 	      dragState = null;
+	      if (state.frame) window.cancelAnimationFrame(state.frame);
+	      if (state.placeholder?.isConnected) state.placeholder.replaceWith(state.item);
 	      state.item.classList.remove('is-dragging');
-	      state.item.style.pointerEvents = '';
+	      state.item.style.width = '';
+	      state.item.style.height = '';
+	      state.item.style.transform = '';
 	      document.body.classList.remove('is-dragging');
 	      try { state.button.releasePointerCapture(state.pointerId); } catch (_) {}
 	      if (state.dragging) {
@@ -1430,16 +1527,16 @@ const indexTemplate = `<!doctype html>
 	        const upperBand = rect.top + rect.height * .35;
 	        const lowerBand = rect.top + rect.height * .65;
 	        const before = clientY < upperBand || (clientY <= lowerBand && clientX < centerX);
-	        if (before) targetItem.before(dragState.item);
-	        else targetItem.after(dragState.item);
+	        if (before) targetItem.before(dragState.placeholder);
+	        else targetItem.after(dragState.placeholder);
 	        return;
 	      }
 	      const targetGrid = target.closest('.icon-grid');
-	      if (targetGrid) targetGrid.append(dragState.item);
+	      if (targetGrid) targetGrid.append(dragState.placeholder);
 	    }
 	    function startDragPointer(event, item, button) {
 	      if (!editMode || event.button !== 0) return;
-	      dragState = { item, button, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, startOrder: JSON.stringify(sortPayload()), dragging: false };
+	      dragState = { item, button, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, offsetX: 0, offsetY: 0, startOrder: JSON.stringify(sortPayload()), dragging: false, placeholder: null, frame: 0 };
 	      button.setPointerCapture(event.pointerId);
 	    }
 	    function moveDragPointer(event) {
@@ -1453,15 +1550,15 @@ const indexTemplate = `<!doctype html>
 	      }
 	      if (dragState?.dragging) {
 	        event.preventDefault();
-	        placeDraggedItem(event.clientX, event.clientY);
+	        scheduleDragFrame(dragState);
 	      }
 	    }
 	    function endDragPointer(event) {
 	      if (dragState?.pointerId === event.pointerId) finishDrag();
 	    }
 	    function startMouseDrag(event, item, button) {
-	      if (!editMode || event.button !== 0) return;
-	      dragState = { item, button, pointerId: 'mouse', startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, startOrder: JSON.stringify(sortPayload()), dragging: false };
+	      if (!editMode || event.button !== 0 || dragState) return;
+	      dragState = { item, button, pointerId: 'mouse', startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, offsetX: 0, offsetY: 0, startOrder: JSON.stringify(sortPayload()), dragging: false, placeholder: null, frame: 0 };
 	    }
 	    function moveMouseDrag(event) {
 	      if (!dragState || dragState.pointerId !== 'mouse') return;
@@ -1474,7 +1571,7 @@ const indexTemplate = `<!doctype html>
 	      }
 	      if (dragState?.dragging) {
 	        event.preventDefault();
-	        placeDraggedItem(event.clientX, event.clientY);
+	        scheduleDragFrame(dragState);
 	      }
 	    }
 	    function endMouseDrag() {
@@ -1550,7 +1647,7 @@ const indexTemplate = `<!doctype html>
       if (action === 'edit') openEdit(activeItem);
       if (action === 'delete') {
         closeMenu();
-        deleteServiceByID(activeItem.dataset.serviceId, activeItem.dataset.name);
+        openDeleteConfirm(activeItem.dataset.serviceId, activeItem.dataset.name);
       }
     });
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
@@ -1561,6 +1658,10 @@ const indexTemplate = `<!doctype html>
     document.querySelector('#settings-close').addEventListener('click', closeSettings);
     backdrop.addEventListener('click', event => { if (event.target === backdrop) closeEdit(); });
     settingsBackdrop.addEventListener('click', event => { if (event.target === settingsBackdrop) closeSettings(); });
+    deleteConfirmBackdrop.addEventListener('click', event => { if (event.target === deleteConfirmBackdrop) closeDeleteConfirm(); });
+    cancelDeleteButton.addEventListener('click', closeDeleteConfirm);
+    confirmDeleteButton.addEventListener('click', performDelete);
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && deleteConfirmBackdrop.classList.contains('is-open')) closeDeleteConfirm(); });
     form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', saveItem);
     deleteButton.addEventListener('click', deleteItem);
