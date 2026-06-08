@@ -1,7 +1,7 @@
 FROM golang:1.26-alpine AS build
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 
@@ -16,4 +16,3 @@ COPY config.example.yaml /app/services.yaml
 EXPOSE 8080
 ENTRYPOINT ["home-nav"]
 CMD ["-addr", "0.0.0.0:8080", "-config", "/app/services.yaml"]
-

@@ -14,11 +14,12 @@ func main() {
 	configPath := flag.String("config", "services.yaml", "services config path")
 	flag.Parse()
 
-	if _, err := os.Stat(*configPath); err != nil {
-		slog.Warn("config file is not readable yet; starting placeholder server", "path", *configPath, "error", err)
+	srv, err := server.New(*configPath)
+	if err != nil {
+		slog.Error("配置加载失败", "path", *configPath, "error", err)
+		os.Exit(1)
 	}
 
-	srv := server.New(*configPath)
 	slog.Info("home-nav listening", "addr", *addr, "config", *configPath)
 	if err := http.ListenAndServe(*addr, srv); err != nil {
 		slog.Error("server stopped", "error", err)

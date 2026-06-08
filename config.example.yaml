@@ -1,10 +1,14 @@
+title: 个人服务导航
+subtitle: 只读入口页，服务状态由后台定时缓存
+check_interval: 30s
+
 groups:
   - id: ops
     name: 运维工具
     services:
       - id: dockge
         name: Dockge
-        description: Docker Compose 管理入口
+        description: Docker Compose 管理入口，只提供跳转链接
         icon_text: D
         internal_url: http://dockge.example.local
         external_url: https://dockge.example.com
@@ -15,6 +19,21 @@ groups:
           type: http
           url: http://dockge.example.local
           expect_status: 200
+          timeout: 2s
+
+      - id: ssh-gateway
+        name: SSH 网关
+        description: 内网维护入口示例
+        icon_text: SSH
+        internal_url: http://gateway.example.local
+        external_url: ""
+        tags:
+          - ops
+          - tcp
+        notes: TCP 检查只判断端口是否可连接，不执行登录。
+        health:
+          type: tcp
+          address: gateway.example.local:22
           timeout: 2s
 
   - id: tools
@@ -29,6 +48,6 @@ groups:
         tags:
           - diagram
           - tools
+        notes: 外部服务或不需要探测的入口可以禁用健康检查。
         health:
           type: disabled
-
