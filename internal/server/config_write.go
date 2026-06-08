@@ -54,6 +54,10 @@ func renderConfigYAML(cfg *Config) string {
 		}
 	}
 	b.WriteString("\n")
+	line(&b, 0, "appearance:")
+	line(&b, 1, "background_color: %s", yamlString(cfg.Appearance.BackgroundColor))
+	line(&b, 1, "background_image: %s", yamlString(cfg.Appearance.BackgroundImage))
+	b.WriteString("\n")
 	line(&b, 0, "groups:")
 	for _, group := range cfg.Groups {
 		line(&b, 1, "- id: %s", group.ID)

@@ -24,8 +24,14 @@ type Config struct {
 	Subtitle      string        `yaml:"subtitle"`
 	Auth          AuthConfig    `yaml:"auth"`
 	Assets        AssetsConfig  `yaml:"assets"`
+	Appearance    Appearance    `yaml:"appearance"`
 	CheckInterval time.Duration `yaml:"check_interval"`
 	Groups        []Group       `yaml:"groups"`
+}
+
+type Appearance struct {
+	BackgroundColor string `yaml:"background_color" json:"background_color"`
+	BackgroundImage string `yaml:"background_image" json:"background_image"`
 }
 
 type AssetsConfig struct {
@@ -148,6 +154,9 @@ func (c *Config) NormalizeAndValidate() error {
 	if err := normalizeAssets(&c.Assets); err != nil {
 		return err
 	}
+	if err := normalizeAppearance(&c.Appearance); err != nil {
+		return err
+	}
 	if len(c.Groups) == 0 {
 		return fmt.Errorf("配置错误: groups 不能为空")
 	}
@@ -184,6 +193,42 @@ func (c *Config) NormalizeAndValidate() error {
 		return fmt.Errorf("配置错误: 至少需要配置一个服务")
 	}
 	return nil
+}
+
+func normalizeAppearance(appearance *Appearance) error {
+	appearance.BackgroundColor = strings.TrimSpace(appearance.BackgroundColor)
+	appearance.BackgroundImage = strings.TrimSpace(appearance.BackgroundImage)
+	if appearance.BackgroundColor == "" {
+		appearance.BackgroundColor = "#000000"
+	}
+	if !validHexColor(appearance.BackgroundColor) {
+		return fmt.Errorf("配置错误: appearance.background_color 必须是 #RGB 或 #RRGGBB")
+	}
+	if appearance.BackgroundImage == "" {
+		return nil
+	}
+	if strings.HasPrefix(appearance.BackgroundImage, "/uploads/") {
+		return nil
+	}
+	if err := validateWebURL("appearance.background_image", appearance.BackgroundImage); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validHexColor(value string) bool {
+	if len(value) != 4 && len(value) != 7 {
+		return false
+	}
+	if value[0] != '#' {
+		return false
+	}
+	for _, r := range value[1:] {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeAssets(assets *AssetsConfig) error {

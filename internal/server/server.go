@@ -7,10 +7,12 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 type Server struct {
@@ -24,11 +26,13 @@ type Server struct {
 }
 
 type PageData struct {
-	Title    string
-	Subtitle string
-	Groups   []Group
-	Tags     []string
-	Auth     AuthConfig
+	Title         string
+	Subtitle      string
+	Groups        []Group
+	Tags          []string
+	Auth          AuthConfig
+	Appearance    Appearance
+	BackgroundCSS template.CSS
 }
 
 type LoginData struct {
@@ -48,6 +52,11 @@ type ServiceUpdateRequest struct {
 	Notes       string                     `json:"notes"`
 	GroupID     string                     `json:"group_id"`
 	Health      ServiceHealthUpdateRequest `json:"health"`
+}
+
+type AppearanceUpdateRequest struct {
+	BackgroundColor string `json:"background_color"`
+	BackgroundImage string `json:"background_image"`
 }
 
 type ServiceHealthUpdateRequest struct {
@@ -92,10 +101,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealthz)
+	s.mux.HandleFunc("/favicon.svg", handleFavicon)
+	s.mux.HandleFunc("/favicon.ico", handleFavicon)
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
+	s.mux.HandleFunc("/api/services", s.handleServices)
 	s.mux.HandleFunc("/api/services/", s.handleService)
+	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/uploads", s.handleUpload)
 	s.mux.HandleFunc("/.iconify/", s.handleIconifyIcon)
 	if s.cfg.Assets.UploadsDir != "" {
@@ -110,6 +123,12 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
+func handleFavicon(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write([]byte(faviconSVG))
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.authenticated(r) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -122,6 +141,43 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(s.statuses.Snapshot())
+}
+
+func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
+	var payload ServiceUpdateRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+
+	cfg, service, err := s.createService(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+	s.statuses.UpdateConfig(cfg)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"service": service})
 }
 
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +225,41 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
+	var payload AppearanceUpdateRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+
+	cfg, err := s.updateAppearance(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"appearance": cfg.Appearance})
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -182,11 +273,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	cfg := s.currentConfig()
 	_ = s.indexTpl.Execute(w, PageData{
-		Title:    cfg.Title,
-		Subtitle: cfg.Subtitle,
-		Groups:   cfg.Groups,
-		Tags:     collectTags(cfg.Groups),
-		Auth:     cfg.Auth,
+		Title:         cfg.Title,
+		Subtitle:      cfg.Subtitle,
+		Groups:        cfg.Groups,
+		Tags:          collectTags(cfg.Groups),
+		Auth:          cfg.Auth,
+		Appearance:    cfg.Appearance,
+		BackgroundCSS: backgroundCSS(cfg.Appearance),
 	})
 }
 
@@ -259,6 +352,69 @@ func (s *Server) currentConfig() *Config {
 	return s.cfg
 }
 
+func (s *Server) createService(payload ServiceUpdateRequest) (*Config, Service, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	targetGroup := -1
+	if payload.GroupID != "" {
+		for i, group := range cfg.Groups {
+			if group.ID == payload.GroupID {
+				targetGroup = i
+				break
+			}
+		}
+		if targetGroup < 0 {
+			return nil, Service{}, fmt.Errorf("分组不存在")
+		}
+	}
+	if targetGroup < 0 && len(cfg.Groups) > 0 {
+		targetGroup = 0
+	}
+	if targetGroup < 0 {
+		return nil, Service{}, fmt.Errorf("分组不存在")
+	}
+
+	service := Service{
+		ID:          uniqueServiceID(cfg, payload.Name),
+		Name:        payload.Name,
+		Description: payload.Description,
+		IconText:    payload.IconText,
+		Icon:        payload.Icon,
+		InternalURL: payload.InternalURL,
+		ExternalURL: payload.ExternalURL,
+		Tags:        payload.Tags,
+		Notes:       payload.Notes,
+		Health: HealthCheck{
+			Type:         payload.Health.Type,
+			URL:          payload.Health.URL,
+			Address:      payload.Health.Address,
+			ExpectStatus: payload.Health.ExpectStatus,
+		},
+	}
+	if service.Health.Type == "" {
+		service.Health.Type = "disabled"
+	}
+	if payload.Health.Timeout != "" {
+		timeout, err := time.ParseDuration(payload.Health.Timeout)
+		if err != nil {
+			return nil, Service{}, fmt.Errorf("health.timeout 格式无效")
+		}
+		service.Health.Timeout = timeout
+	}
+	cfg.Groups[targetGroup].Services = append(cfg.Groups[targetGroup].Services, service)
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, Service{}, err
+	}
+	for _, candidate := range cfg.Groups[targetGroup].Services {
+		if candidate.ID == service.ID {
+			return cfg, candidate, nil
+		}
+	}
+	return nil, Service{}, fmt.Errorf("服务新增失败")
+}
+
 func (s *Server) updateService(id string, payload ServiceUpdateRequest) (*Config, Service, error) {
 	s.mu.RLock()
 	cfg := cloneConfig(s.cfg)
@@ -329,6 +485,19 @@ func (s *Server) updateService(id string, payload ServiceUpdateRequest) (*Config
 	return nil, Service{}, fmt.Errorf("服务更新失败")
 }
 
+func (s *Server) updateAppearance(payload AppearanceUpdateRequest) (*Config, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	cfg.Appearance.BackgroundColor = payload.BackgroundColor
+	cfg.Appearance.BackgroundImage = payload.BackgroundImage
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func findService(cfg *Config, id string) (int, int) {
 	for gi, group := range cfg.Groups {
 		for si, service := range group.Services {
@@ -352,6 +521,70 @@ func cloneConfig(cfg *Config) *Config {
 		}
 	}
 	return &clone
+}
+
+func uniqueServiceID(cfg *Config, name string) string {
+	base := slugifyID(name)
+	if base == "" {
+		base = "service"
+	}
+	used := make(map[string]struct{})
+	for _, group := range cfg.Groups {
+		for _, service := range group.Services {
+			used[service.ID] = struct{}{}
+		}
+	}
+	if _, ok := used[base]; !ok {
+		return base
+	}
+	for i := 2; ; i++ {
+		id := fmt.Sprintf("%s-%d", base, i)
+		if _, ok := used[id]; !ok {
+			return id
+		}
+	}
+}
+
+func slugifyID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteString(fmt.Sprintf("%x", r))
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+var cssEscapePattern = regexp.MustCompile(`["\\\n\r]`)
+
+func backgroundCSS(appearance Appearance) template.CSS {
+	color := appearance.BackgroundColor
+	if color == "" {
+		color = "#000000"
+	}
+	var b strings.Builder
+	b.WriteString("background-color:")
+	b.WriteString(color)
+	b.WriteString(";")
+	if appearance.BackgroundImage != "" {
+		image := cssEscapePattern.ReplaceAllString(appearance.BackgroundImage, "")
+		b.WriteString("background-image:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url(\"")
+		b.WriteString(image)
+		b.WriteString("\");background-size:cover;background-position:center;background-attachment:fixed;")
+	}
+	return template.CSS(b.String())
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
@@ -384,6 +617,7 @@ const indexTemplate = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js" defer></script>
   <style>
     :root {
@@ -404,12 +638,15 @@ const indexTemplate = `<!doctype html>
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); }
+    body { margin: 0; min-height: 100vh; background: var(--bg); background-repeat: no-repeat; color: var(--text); }
     a { color: inherit; text-decoration: none; }
     button, input, textarea, select { font: inherit; }
     .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 52px 0 80px; }
     .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
+    .top-tools form { margin: 0; }
     .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
+    .tool-button:hover { background: #242424; }
+    .tool-button iconify-icon { font-size: 22px; }
     .hero { display: grid; justify-items: center; gap: 22px; margin-bottom: 52px; }
     .title-row { display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap; }
     h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .95; letter-spacing: 0; font-weight: 800; }
@@ -422,13 +659,19 @@ const indexTemplate = `<!doctype html>
     .search::placeholder { color: #9ea4b0; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
-    .group-title { display: flex; align-items: baseline; gap: 12px; }
+    .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .group-heading { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
     h2 { margin: 0; font-size: 24px; letter-spacing: 0; font-weight: 800; }
     .group-count { color: var(--muted); font-size: 14px; }
+    .group-actions { display: flex; align-items: center; gap: 8px; }
+    .group-action { width: 38px; height: 38px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; }
+    .group-action:hover, .group-action.is-active { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.08); }
+    .group-action iconify-icon { font-size: 26px; }
     .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 28px 20px; align-items: start; }
     .app-icon { display: grid; justify-items: center; gap: 8px; min-width: 0; color: #fff; }
     .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
     .icon-button:hover { transform: translateY(-2px); background: #1f1f1f; }
+    body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
     .icon-button:focus-visible { outline: 3px solid rgba(103, 224, 182, .45); outline-offset: 3px; }
     .icon-button iconify-icon { font-size: 42px; }
     .icon-button img { width: 50px; height: 50px; object-fit: contain; border-radius: 10px; }
@@ -481,6 +724,12 @@ const indexTemplate = `<!doctype html>
     .save-button, .delete-button { min-width: 118px; min-height: 58px; border: 0; border-radius: 7px; font-size: 24px; cursor: pointer; }
     .save-button { background: var(--accent); color: #050505; }
     .delete-button { background: var(--danger); color: #050505; display: none; }
+    .settings-preview { min-height: 170px; border: 1px solid #676873; border-radius: 16px; background: #000; display: grid; place-items: center; color: #fff; margin-bottom: 24px; overflow: hidden; }
+    .settings-preview span { padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.58); color: #fff; }
+    .color-row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; }
+    .field input[type="color"] { min-height: 56px; padding: 6px; cursor: pointer; }
+    .secondary-button { min-height: 58px; border: 1px solid #73737d; border-radius: 7px; background: #3d3d45; color: #f3f3f7; padding: 0 18px; font-size: 22px; cursor: pointer; }
+    .secondary-button:hover { background: #50505a; }
     .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #202026; color: #fff; border: 1px solid #555761; border-radius: 999px; padding: 10px 18px; display: none; z-index: 80; }
     .toast.is-open { display: block; }
     @media (max-width: 760px) {
@@ -490,6 +739,8 @@ const indexTemplate = `<!doctype html>
       .title-row { justify-content: flex-start; align-items: flex-start; }
       h1 { font-size: 44px; }
       .clock { padding-bottom: 0; }
+      .group-title { align-items: flex-start; }
+      .group-actions { padding-top: 2px; }
       .search-wrap { border-radius: 14px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
@@ -504,13 +755,18 @@ const indexTemplate = `<!doctype html>
       .field.full { grid-column: auto; }
       .field label { font-size: 17px; }
       .field input, .field textarea, .field select { min-height: 50px; font-size: 16px; }
+      .color-row { grid-template-columns: 70px 1fr; }
       .form-actions { justify-content: stretch; }
-      .save-button { width: 100%; }
+      .save-button, .secondary-button { width: 100%; }
     }
   </style>
 </head>
-<body>
-  {{if .Auth.Enabled}}<form class="top-tools" method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
+<body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}">
+  <div class="top-tools">
+    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
+    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
+    {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
+  </div>
   <main class="shell">
     <section class="hero">
       <div class="title-row">
@@ -523,7 +779,13 @@ const indexTemplate = `<!doctype html>
     <section class="groups">
       {{range .Groups}}
       <section class="group" data-group-id="{{.ID}}">
-        <div class="group-title"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / {{len .Services}}</span></div>
+        <div class="group-title">
+          <div class="group-heading"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / {{len .Services}}</span></div>
+          <div class="group-actions">
+            <button class="group-action" type="button" data-action="add-service" data-group-id="{{.ID}}" title="新增入口"><iconify-icon icon="mdi:plus"></iconify-icon></button>
+            <button class="group-action edit-mode-button" type="button" data-action="toggle-edit-mode" title="编辑模式"><iconify-icon icon="mdi:cursor-default-click-outline"></iconify-icon></button>
+          </div>
+        </div>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
@@ -574,6 +836,19 @@ const indexTemplate = `<!doctype html>
       </form>
     </section>
   </div>
+  <div class="modal-backdrop" id="settings-backdrop">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head"><h2 class="modal-title" id="settings-title">页面设置</h2><button class="close-button" type="button" id="settings-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="settings-preview" id="settings-preview"><span>背景预览</span></div>
+      <form id="settings-form">
+        <div class="form-grid">
+          <div class="field"><label>背景颜色</label><div class="color-row"><input name="background_color_picker" type="color"><input name="background_color" placeholder="#000000"></div></div>
+          <div class="field"><label>背景图片</label><div class="icon-field-row"><input name="background_image" placeholder="/uploads/background.png 或 https://example.com/bg.jpg"><button class="upload-button" type="button" id="upload-background-button">上传图片</button></div><input class="file-input" id="upload-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>
+        </div>
+        <div class="form-actions"><button class="secondary-button" type="button" id="reset-background-button">恢复默认</button><button class="save-button" type="submit">保存</button></div>
+      </form>
+    </section>
+  </div>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -582,13 +857,27 @@ const indexTemplate = `<!doctype html>
     const groups = [...document.querySelectorAll('.group')];
     const menu = document.querySelector('#item-menu');
     const backdrop = document.querySelector('#edit-backdrop');
+    const settingsBackdrop = document.querySelector('#settings-backdrop');
     const form = document.querySelector('#edit-form');
+    const settingsForm = document.querySelector('#settings-form');
     const toast = document.querySelector('#toast');
     const uploadButton = document.querySelector('#upload-icon-button');
     const uploadFile = document.querySelector('#upload-icon-file');
+    const uploadBackgroundButton = document.querySelector('#upload-background-button');
+    const uploadBackgroundFile = document.querySelector('#upload-background-file');
+    const settingsPreview = document.querySelector('#settings-preview');
+    const editTitle = document.querySelector('#edit-title');
+    const saveButton = form.querySelector('.save-button');
+    const accessModeButton = document.querySelector('#access-mode-button');
+    const accessModeIcon = document.querySelector('#access-mode-icon');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
+    const accessModeKey = 'home-nav.access-mode';
     let activeItem = null;
+    let editMode = false;
+    let accessMode = 'external';
 
+    function field(name) { return form.elements.namedItem(name); }
+    function settingField(name) { return settingsForm.elements.namedItem(name); }
     function updateClock() {
       const now = new Date();
       document.querySelector('#clock-time').textContent = now.toLocaleTimeString('en-GB', { hour12: false });
@@ -597,11 +886,40 @@ const indexTemplate = `<!doctype html>
     function normalize(value) { return (value || '').trim().toLowerCase(); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
+    function preferredURL(item, mode) {
+      const internalURL = item.dataset.internalUrl || '';
+      const externalURL = item.dataset.externalUrl || '';
+      if (mode === 'internal') return internalURL || externalURL;
+      return externalURL || internalURL;
+    }
+    function savedAccessMode() {
+      try {
+        return localStorage.getItem(accessModeKey) === 'internal' ? 'internal' : 'external';
+      } catch (_) {
+        return 'external';
+      }
+    }
+    function setAccessMode(mode, notify) {
+      accessMode = mode === 'internal' ? 'internal' : 'external';
+      document.body.dataset.accessMode = accessMode;
+      accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
+      accessModeIcon.setAttribute('icon', accessMode === 'internal' ? 'mdi:lan' : 'mdi:web');
+      for (const item of items) {
+        const link = item.querySelector('.icon-button');
+        const url = preferredURL(item, accessMode);
+        if (url) link.href = url;
+        link.dataset.activeUrlType = accessMode;
+      }
+      try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
+      if (notify) showToast(accessMode === 'internal' ? '已切换到内网入口' : '已切换到外网入口');
+    }
+    function toggleAccessMode() { setAccessMode(accessMode === 'internal' ? 'external' : 'internal', true); }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
       return '/.iconify/' + encodeURIComponent(parts[0]) + '/' + encodeURIComponent(parts[1]) + '.svg';
     }
+    function escapeHTML(value) { return String(value || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     function iconMarkup(item) {
       const icon = item.dataset.iconValue || '';
       const text = item.dataset.iconText || (item.dataset.name || '?').slice(0, 3).toUpperCase();
@@ -609,7 +927,6 @@ const indexTemplate = `<!doctype html>
       if (icon.includes(':')) return '<img src="' + escapeHTML(onlineIconSrc(icon)) + '" alt="">';
       return '<span class="icon-fallback">' + escapeHTML(text) + '</span>';
     }
-    function escapeHTML(value) { return String(value || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     function applyFilters() {
       const keyword = normalize(searchInput.value);
       let visibleTotal = 0;
@@ -639,35 +956,107 @@ const indexTemplate = `<!doctype html>
       openMenuAt(item, rect.left, rect.bottom + 10);
     }
     function closeMenu() { menu.classList.remove('is-open'); menu.setAttribute('aria-hidden', 'true'); }
+    function setEditMode(value) {
+      editMode = value;
+      document.body.classList.toggle('is-edit-mode', editMode);
+      for (const button of document.querySelectorAll('.edit-mode-button')) button.classList.toggle('is-active', editMode);
+      showToast(editMode ? '编辑模式已开启' : '编辑模式已关闭');
+    }
+    function resetServiceForm(groupID) {
+      editTitle.textContent = '新增入口';
+      saveButton.textContent = '新增';
+      field('id').value = '';
+      field('name').value = '';
+      field('description').value = '';
+      field('icon_text').value = '';
+      field('icon').value = '';
+      field('external_url').value = '';
+      field('internal_url').value = '';
+      field('group_id').value = groupID || groups[0]?.dataset.groupId || '';
+      field('tags').value = '';
+      field('notes').value = '';
+      field('health_type').value = 'disabled';
+      field('health_url').value = '';
+      field('health_address').value = '';
+      field('health_expect_status').value = '';
+      field('health_timeout').value = '2s';
+    }
+    function openCreate(groupID) {
+      resetServiceForm(groupID);
+      refreshPreview();
+      backdrop.classList.add('is-open');
+      closeMenu();
+    }
     function openEdit(item) {
       activeItem = item;
-      form.id.value = item.dataset.serviceId;
-      form.name.value = item.dataset.name || '';
-      form.description.value = item.dataset.description || '';
-      form.icon_text.value = item.dataset.iconText || '';
-      form.icon.value = item.dataset.iconValue || '';
-      form.external_url.value = item.dataset.externalUrl || '';
-      form.internal_url.value = item.dataset.internalUrl || '';
-      form.group_id.value = item.dataset.groupId || '';
-      form.tags.value = item.dataset.tags || '';
-      form.notes.value = item.dataset.notes || '';
-      form.health_type.value = item.dataset.healthType || 'disabled';
-      form.health_url.value = item.dataset.healthUrl || '';
-      form.health_address.value = item.dataset.healthAddress || '';
-      form.health_expect_status.value = item.dataset.healthExpectStatus === '0' ? '' : (item.dataset.healthExpectStatus || '');
-      form.health_timeout.value = item.dataset.healthTimeout || '2s';
+      editTitle.textContent = '编辑入口';
+      saveButton.textContent = '保存';
+      field('id').value = item.dataset.serviceId;
+      field('name').value = item.dataset.name || '';
+      field('description').value = item.dataset.description || '';
+      field('icon_text').value = item.dataset.iconText || '';
+      field('icon').value = item.dataset.iconValue || '';
+      field('external_url').value = item.dataset.externalUrl || '';
+      field('internal_url').value = item.dataset.internalUrl || '';
+      field('group_id').value = item.dataset.groupId || '';
+      field('tags').value = item.dataset.tags || '';
+      field('notes').value = item.dataset.notes || '';
+      field('health_type').value = item.dataset.healthType || 'disabled';
+      field('health_url').value = item.dataset.healthUrl || '';
+      field('health_address').value = item.dataset.healthAddress || '';
+      field('health_expect_status').value = item.dataset.healthExpectStatus === '0' ? '' : (item.dataset.healthExpectStatus || '');
+      field('health_timeout').value = item.dataset.healthTimeout || '2s';
       refreshPreview();
       backdrop.classList.add('is-open');
       closeMenu();
     }
     function closeEdit() { backdrop.classList.remove('is-open'); }
     function refreshPreview() {
-      const mock = { dataset: { iconValue: form.icon.value, iconText: form.icon_text.value, name: form.name.value } };
+      const mock = { dataset: { iconValue: field('icon').value, iconText: field('icon_text').value, name: field('name').value } };
       document.querySelector('#preview-wide-icon').innerHTML = iconMarkup(mock);
       document.querySelector('#preview-square-icon').innerHTML = iconMarkup(mock);
-      document.querySelector('#preview-wide-name').textContent = form.name.value || '-';
-      document.querySelector('#preview-square-name').textContent = form.name.value || '-';
+      document.querySelector('#preview-wide-name').textContent = field('name').value || '-';
+      document.querySelector('#preview-square-name').textContent = field('name').value || '-';
     }
+    function normalizeHexColor(value) {
+      return /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#000000';
+    }
+    function backgroundStyle(color, image) {
+      const style = { backgroundColor: color || '#000000', backgroundImage: '', backgroundSize: '', backgroundPosition: '', backgroundAttachment: '' };
+      if (image) {
+        style.backgroundImage = 'linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url("' + String(image).replace(/["\\\n\r]/g, '') + '")';
+        style.backgroundSize = 'cover';
+        style.backgroundPosition = 'center';
+        style.backgroundAttachment = 'fixed';
+      }
+      return style;
+    }
+    function applyBackgroundPreview(color, image, target) {
+      const style = backgroundStyle(color, image);
+      target.style.backgroundColor = style.backgroundColor;
+      target.style.backgroundImage = style.backgroundImage;
+      target.style.backgroundSize = style.backgroundSize;
+      target.style.backgroundPosition = style.backgroundPosition;
+      target.style.backgroundAttachment = '';
+    }
+    function applyBodyBackground(color, image) {
+      const style = backgroundStyle(color, image);
+      document.body.style.backgroundColor = style.backgroundColor;
+      document.body.style.backgroundImage = style.backgroundImage;
+      document.body.style.backgroundSize = style.backgroundSize;
+      document.body.style.backgroundPosition = style.backgroundPosition;
+      document.body.style.backgroundAttachment = style.backgroundAttachment;
+    }
+    function openSettings() {
+      const color = document.body.dataset.backgroundColor || '#000000';
+      const image = document.body.dataset.backgroundImage || '';
+      settingField('background_color').value = color;
+      settingField('background_color_picker').value = normalizeHexColor(color);
+      settingField('background_image').value = image;
+      applyBackgroundPreview(color, image, settingsPreview);
+      settingsBackdrop.classList.add('is-open');
+    }
+    function closeSettings() { settingsBackdrop.classList.remove('is-open'); }
     async function copyText(value) {
       if (!value) return showToast('没有可复制的链接');
       await navigator.clipboard.writeText(value);
@@ -689,34 +1078,54 @@ const indexTemplate = `<!doctype html>
     }
     async function saveItem(event) {
       event.preventDefault();
-      const id = form.id.value;
-      const expectStatus = Number(form.health_expect_status.value || 0);
+      const id = field('id').value;
+      const expectStatus = Number(field('health_expect_status').value || 0);
       const payload = {
-        name: form.name.value,
-        description: form.description.value,
-        icon_text: form.icon_text.value,
-        icon: form.icon.value,
-        external_url: form.external_url.value,
-        internal_url: form.internal_url.value,
-        group_id: form.group_id.value,
-        tags: form.tags.value.split(',').map(v => v.trim()).filter(Boolean),
-        notes: form.notes.value,
+        name: field('name').value,
+        description: field('description').value,
+        icon_text: field('icon_text').value,
+        icon: field('icon').value,
+        external_url: field('external_url').value,
+        internal_url: field('internal_url').value,
+        group_id: field('group_id').value,
+        tags: field('tags').value.split(',').map(v => v.trim()).filter(Boolean),
+        notes: field('notes').value,
         health: {
-          type: form.health_type.value,
-          url: form.health_url.value,
-          address: form.health_address.value,
+          type: field('health_type').value,
+          url: field('health_url').value,
+          address: field('health_address').value,
           expect_status: expectStatus,
-          timeout: form.health_timeout.value || '2s'
+          timeout: field('health_timeout').value || '2s'
         }
       };
-      const response = await fetch('/api/services/' + encodeURIComponent(id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const url = id ? '/api/services/' + encodeURIComponent(id) : '/api/services';
+      const method = id ? 'PUT' : 'POST';
+      const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: '保存失败' }));
         showToast(error.error || '保存失败');
         return;
       }
-      showToast('已保存');
+      showToast(id ? '已保存' : '已新增');
       setTimeout(() => location.reload(), 500);
+    }
+    async function saveSettings(event) {
+      event.preventDefault();
+      const payload = {
+        background_color: settingField('background_color').value,
+        background_image: settingField('background_image').value
+      };
+      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: '保存失败' }));
+        showToast(error.error || '保存失败');
+        return;
+      }
+      document.body.dataset.backgroundColor = payload.background_color;
+      document.body.dataset.backgroundImage = payload.background_image;
+      applyBodyBackground(payload.background_color, payload.background_image);
+      showToast('页面设置已保存');
+      closeSettings();
     }
     async function uploadIcon(file) {
       if (!file) return;
@@ -731,7 +1140,7 @@ const indexTemplate = `<!doctype html>
           showToast(payload.error || '上传失败');
           return;
         }
-        form.icon.value = payload.url || '';
+        field('icon').value = payload.url || '';
         refreshPreview();
         showToast('图片已上传');
       } finally {
@@ -740,16 +1149,42 @@ const indexTemplate = `<!doctype html>
         uploadFile.value = '';
       }
     }
+    async function uploadBackground(file) {
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      uploadBackgroundButton.disabled = true;
+      uploadBackgroundButton.textContent = '上传中';
+      try {
+        const response = await fetch('/api/uploads', { method: 'POST', body: formData });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showToast(payload.error || '上传失败');
+          return;
+        }
+        settingField('background_image').value = payload.url || '';
+        applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview);
+        showToast('背景图已上传');
+      } finally {
+        uploadBackgroundButton.disabled = false;
+        uploadBackgroundButton.textContent = '上传图片';
+        uploadBackgroundFile.value = '';
+      }
+    }
 
     for (const item of items) {
       const button = item.querySelector('.icon-button');
       let longPressTimer = null;
       let suppressClick = false;
       button.addEventListener('click', event => {
+        if (editMode) {
+          event.preventDefault();
+          openEdit(item);
+          return;
+        }
         if (suppressClick) {
           suppressClick = false;
           event.preventDefault();
-          return;
         }
       });
       button.addEventListener('contextmenu', event => {
@@ -768,6 +1203,12 @@ const indexTemplate = `<!doctype html>
         button.addEventListener(eventName, () => window.clearTimeout(longPressTimer));
       }
     }
+    document.addEventListener('click', event => {
+      const actionButton = event.target.closest('.group-action[data-action]');
+      if (!actionButton) return;
+      if (actionButton.dataset.action === 'add-service') openCreate(actionButton.dataset.groupId || '');
+      if (actionButton.dataset.action === 'toggle-edit-mode') setEditMode(!editMode);
+    });
     menu.addEventListener('click', event => {
       const button = event.target.closest('button[data-action]');
       if (!button || !activeItem) return;
@@ -779,18 +1220,47 @@ const indexTemplate = `<!doctype html>
       if (action === 'edit') openEdit(activeItem);
     });
     document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
+    accessModeButton.addEventListener('click', toggleAccessMode);
+    document.querySelector('#open-settings-button').addEventListener('click', openSettings);
     document.querySelector('#edit-close').addEventListener('click', closeEdit);
+    document.querySelector('#settings-close').addEventListener('click', closeSettings);
     backdrop.addEventListener('click', event => { if (event.target === backdrop) closeEdit(); });
+    settingsBackdrop.addEventListener('click', event => { if (event.target === settingsBackdrop) closeSettings(); });
     form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', saveItem);
+    settingsForm.addEventListener('submit', saveSettings);
+    settingsForm.addEventListener('input', () => applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview));
+    settingField('background_color_picker').addEventListener('input', () => {
+      settingField('background_color').value = settingField('background_color_picker').value;
+      applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview);
+    });
+    settingField('background_color').addEventListener('input', () => {
+      const value = settingField('background_color').value;
+      if (/^#[0-9a-fA-F]{6}$/.test(value)) settingField('background_color_picker').value = value;
+    });
+    document.querySelector('#reset-background-button').addEventListener('click', () => {
+      settingField('background_color').value = '#000000';
+      settingField('background_color_picker').value = '#000000';
+      settingField('background_image').value = '';
+      applyBackgroundPreview('#000000', '', settingsPreview);
+    });
     uploadButton.addEventListener('click', () => uploadFile.click());
     uploadFile.addEventListener('change', () => uploadIcon(uploadFile.files?.[0]));
+    uploadBackgroundButton.addEventListener('click', () => uploadBackgroundFile.click());
+    uploadBackgroundFile.addEventListener('change', () => uploadBackground(uploadBackgroundFile.files?.[0]));
     searchInput.addEventListener('input', applyFilters);
     updateClock(); setInterval(updateClock, 1000);
+    setAccessMode(savedAccessMode(), false);
     applyFilters(); refreshStatus(); setInterval(refreshStatus, 30000);
   </script>
 </body>
 </html>`
+
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#141414"/>
+  <path d="M17 20h30v24H17z" fill="none" stroke="#f7f7f7" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M24 27h4v10h-4zm8 0h4v10h-4zm8 0h4v10h-4z" fill="#67e0b6"/>
+</svg>`
 
 const loginTemplate = `<!doctype html>
 <html lang="zh-CN">
@@ -798,17 +1268,20 @@ const loginTemplate = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 - {{.Title}}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js" defer></script>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f4f6f8;
-      --surface: #ffffff;
-      --text: #172033;
-      --muted: #637083;
-      --line: #d8e0ea;
-      --accent: #1666c5;
-      --accent-strong: #0f4f9f;
-      --bad: #b42318;
+      color-scheme: dark;
+      --bg: #000;
+      --surface: #151515;
+      --field: #24242a;
+      --text: #f7f7f7;
+      --muted: #b5bac5;
+      --line: #4c4d56;
+      --accent: #67e0b6;
+      --accent-strong: #8ff0ce;
+      --bad: #ff8c8c;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
@@ -821,28 +1294,35 @@ const loginTemplate = `<!doctype html>
       color: var(--text);
       padding: 24px;
     }
+    .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
+    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
+    .tool-button:hover { background: #242424; }
+    .tool-button iconify-icon { font-size: 22px; }
     main {
-      width: min(420px, 100%);
+      width: min(430px, 100%);
       display: grid;
-      gap: 18px;
+      gap: 22px;
     }
     h1 {
       margin: 0;
-      font-size: 30px;
-      line-height: 1.12;
+      font-size: clamp(40px, 10vw, 58px);
+      line-height: .98;
       letter-spacing: 0;
+      font-weight: 800;
+      text-align: center;
     }
     .subtitle {
-      margin: 8px 0 0;
+      margin: 12px 0 0;
       color: var(--muted);
       line-height: 1.6;
+      text-align: center;
     }
     form {
       display: grid;
-      gap: 14px;
-      padding: 20px;
+      gap: 16px;
+      padding: 24px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 14px;
       background: var(--surface);
     }
     label {
@@ -853,27 +1333,28 @@ const loginTemplate = `<!doctype html>
     }
     input {
       width: 100%;
-      min-height: 42px;
-      border: 1px solid var(--line);
+      min-height: 48px;
+      border: 1px solid transparent;
       border-radius: 8px;
-      padding: 0 12px;
+      padding: 0 14px;
       color: var(--text);
-      background: #fff;
+      background: var(--field);
       font-size: 15px;
       outline: none;
     }
     input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(22, 102, 197, .14);
+      box-shadow: 0 0 0 3px rgba(103, 224, 182, .15);
     }
     button {
-      min-height: 42px;
+      min-height: 48px;
       border: 1px solid var(--accent);
       border-radius: 8px;
       background: var(--accent);
-      color: #fff;
-      font-size: 15px;
+      color: #050505;
+      font-size: 16px;
       cursor: pointer;
+      font-weight: 700;
     }
     button:hover { background: var(--accent-strong); }
     .error {
@@ -882,9 +1363,17 @@ const loginTemplate = `<!doctype html>
       font-size: 14px;
       line-height: 1.5;
     }
+    @media (max-width: 760px) {
+      body { align-items: start; padding: 96px 18px 24px; }
+      .top-tools { top: 12px; right: 12px; }
+      form { padding: 20px; }
+    }
   </style>
 </head>
 <body>
+  <div class="top-tools">
+    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
+  </div>
   <main>
     <div>
       <h1>{{.Title}}</h1>
@@ -901,5 +1390,26 @@ const loginTemplate = `<!doctype html>
       <button type="submit">登录</button>
     </form>
   </main>
+  <script>
+    const accessModeKey = 'home-nav.access-mode';
+    const accessModeButton = document.querySelector('#access-mode-button');
+    const accessModeIcon = document.querySelector('#access-mode-icon');
+    function savedAccessMode() {
+      try {
+        return localStorage.getItem(accessModeKey) === 'internal' ? 'internal' : 'external';
+      } catch (_) {
+        return 'external';
+      }
+    }
+    function setAccessMode(mode) {
+      const accessMode = mode === 'internal' ? 'internal' : 'external';
+      document.body.dataset.accessMode = accessMode;
+      accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
+      accessModeIcon.setAttribute('icon', accessMode === 'internal' ? 'mdi:lan' : 'mdi:web');
+      try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
+    }
+    accessModeButton.addEventListener('click', () => setAccessMode(document.body.dataset.accessMode === 'internal' ? 'external' : 'internal'));
+    setAccessMode(savedAccessMode());
+  </script>
 </body>
 </html>`

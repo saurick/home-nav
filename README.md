@@ -68,7 +68,11 @@ docker compose -f deploy/docker-compose.yml up -d
 - `auth.enabled` 为 `true` 时，首页和 `/api/status` 需要登录，`/healthz` 仍保持公开。
 - 真实 `auth.password` 和 `auth.session_secret` 只应放在私有运行配置里，不要提交到仓库。
 - 页面支持编辑入口并写回 YAML；如果用 Docker 挂载配置文件，`/app/services.yaml` 需要读写挂载。只读挂载可以浏览，但保存编辑会失败。
+- 页面支持新增入口和编辑模式；新增入口会写入当前分组，编辑模式开启后左键点击图标进入编辑，关闭后左键仍然直接跳转。
+- 页面支持外网 / 内网访问模式切换；该偏好保存在浏览器本地，影响服务卡片左键默认打开的入口。
+- `appearance.background_color` 和 `appearance.background_image` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL。
 - 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把图标目录挂载到容器内；编辑页上传图片也会写入这个目录。真实上传图标目录不要提交到仓库。
+- 页面设置里的背景图上传复用 `assets.uploads_dir`，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。
 - 如果服务图标使用 `mdi:nas` 这类在线图标名，服务端会通过 Iconify API 拉取 SVG。生产环境建议配置 `assets.icon_cache_dir` 并持久化挂载，避免每次重建后重新拉取。
 
 真实生产部署建议：

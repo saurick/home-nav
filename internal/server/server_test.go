@@ -33,6 +33,27 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestFavicon(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+		t.Fatalf("unexpected content type: %q", got)
+	}
+	if !strings.Contains(rec.Body.String(), "<svg") {
+		t.Fatalf("expected svg body, got %q", rec.Body.String())
+	}
+}
+
 func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
 	srv, err := New("../../config.example.yaml")
 	if err != nil {
@@ -59,6 +80,27 @@ func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
 	}
 }
 
+func TestIndexIncludesAccessModeToggle(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"id=\"access-mode-button\"", "data-internal-url=", "data-external-url=", "home-nav.access-mode"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
+	}
+}
+
 func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
@@ -80,6 +122,27 @@ func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	srv.ServeHTTP(statusRec, statusReq)
 	if statusRec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected unauthorized status, got %d", statusRec.Code)
+	}
+}
+
+func TestLoginIncludesAccessModeToggle(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"id=\"access-mode-button\"", "home-nav.access-mode", "mdi:web"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected login to contain %q", want)
+		}
 	}
 }
 
@@ -174,6 +237,78 @@ func TestServiceUpdateSavesConfig(t *testing.T) {
 	}
 	if got.Health.Type != "http" || got.Health.ExpectStatus != 204 || got.Health.Timeout != 1500*time.Millisecond {
 		t.Fatalf("health was not saved: %#v", got.Health)
+	}
+}
+
+func TestServiceCreateSavesConfig(t *testing.T) {
+	configPath := writeTempConfig(t, authTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	body := []byte(`{
+		"name": "New Tool",
+		"description": "新增入口",
+		"icon_text": "NT",
+		"icon": "mdi:plus",
+		"internal_url": "http://new.example.local",
+		"external_url": "",
+		"tags": ["tools"],
+		"notes": "新增测试",
+		"group_id": "ops",
+		"health": {
+			"type": "disabled",
+			"timeout": "2s"
+		}
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	if len(cfg.Groups[0].Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(cfg.Groups[0].Services))
+	}
+	got := cfg.Groups[0].Services[1]
+	if got.ID != "new-tool" || got.Name != "New Tool" || got.Health.Type != "disabled" {
+		t.Fatalf("service was not created correctly: %#v", got)
+	}
+}
+
+func TestSettingsUpdateSavesAppearance(t *testing.T) {
+	configPath := writeTempConfig(t, authTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	body := []byte(`{"background_color":"#123abc","background_image":"/uploads/bg.webp"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	if cfg.Appearance.BackgroundColor != "#123abc" || cfg.Appearance.BackgroundImage != "/uploads/bg.webp" {
+		t.Fatalf("appearance was not saved: %#v", cfg.Appearance)
 	}
 }
 
