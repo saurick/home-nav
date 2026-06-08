@@ -1,0 +1,15 @@
+.DS_Store
+
+# Build output
+/bin/
+/dist/
+/tmp/
+/home-nav
+
+# Local runtime config
+/services.yaml
+/services.local.yaml
+
+# Logs
+*.log
+

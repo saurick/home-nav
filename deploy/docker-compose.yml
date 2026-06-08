@@ -1,0 +1,15 @@
+services:
+  home-nav:
+    image: home-nav:local
+    container_name: home-nav
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../config.example.yaml:/app/services.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+

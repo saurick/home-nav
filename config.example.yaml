@@ -1,0 +1,34 @@
+groups:
+  - id: ops
+    name: 运维工具
+    services:
+      - id: dockge
+        name: Dockge
+        description: Docker Compose 管理入口
+        icon_text: D
+        internal_url: http://dockge.example.local
+        external_url: https://dockge.example.com
+        tags:
+          - docker
+          - ops
+        health:
+          type: http
+          url: http://dockge.example.local
+          expect_status: 200
+          timeout: 2s
+
+  - id: tools
+    name: 开发工具
+    services:
+      - id: drawio
+        name: Draw.io
+        description: 图表绘制工具
+        icon_text: DI
+        internal_url: http://drawio.example.local
+        external_url: https://drawio.example.com
+        tags:
+          - diagram
+          - tools
+        health:
+          type: disabled
+
