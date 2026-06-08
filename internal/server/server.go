@@ -590,6 +590,11 @@ const indexTemplate = `<!doctype html>
     function normalize(value) { return (value || '').trim().toLowerCase(); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
+    function defaultURL(item) { return item?.dataset.externalUrl || item?.dataset.internalUrl || ''; }
+    function openDefault(item) {
+      const url = defaultURL(item);
+      url ? window.open(url, '_blank', 'noreferrer') : showToast('没有可打开的入口');
+    }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
@@ -618,15 +623,18 @@ const indexTemplate = `<!doctype html>
       }
       document.body.classList.toggle('is-empty', visibleTotal === 0);
     }
-    function openMenu(item, anchor) {
+    function openMenuAt(item, left, top) {
       activeItem = item;
-      const rect = anchor.getBoundingClientRect();
       menu.classList.add('is-open');
       menu.setAttribute('aria-hidden', 'false');
-      const left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 12);
-      const top = Math.min(rect.bottom + 10, window.innerHeight - menu.offsetHeight - 12);
-      menu.style.left = Math.max(12, left) + 'px';
-      menu.style.top = Math.max(12, top) + 'px';
+      const menuLeft = Math.min(left, window.innerWidth - menu.offsetWidth - 12);
+      const menuTop = Math.min(top, window.innerHeight - menu.offsetHeight - 12);
+      menu.style.left = Math.max(12, menuLeft) + 'px';
+      menu.style.top = Math.max(12, menuTop) + 'px';
+    }
+    function openMenuNear(item, anchor) {
+      const rect = anchor.getBoundingClientRect();
+      openMenuAt(item, rect.left, rect.bottom + 10);
     }
     function closeMenu() { menu.classList.remove('is-open'); menu.setAttribute('aria-hidden', 'true'); }
     function openEdit(item) {
@@ -709,7 +717,33 @@ const indexTemplate = `<!doctype html>
       setTimeout(() => location.reload(), 500);
     }
 
-    for (const item of items) item.querySelector('.icon-button').addEventListener('click', event => openMenu(item, event.currentTarget));
+    for (const item of items) {
+      const button = item.querySelector('.icon-button');
+      let longPressTimer = null;
+      let suppressClick = false;
+      button.addEventListener('click', event => {
+        if (suppressClick) {
+          suppressClick = false;
+          return;
+        }
+        openDefault(item);
+      });
+      button.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        openMenuAt(item, event.clientX, event.clientY);
+      });
+      button.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse') return;
+        window.clearTimeout(longPressTimer);
+        longPressTimer = window.setTimeout(() => {
+          suppressClick = true;
+          openMenuNear(item, button);
+        }, 520);
+      });
+      for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) {
+        button.addEventListener(eventName, () => window.clearTimeout(longPressTimer));
+      }
+    }
     menu.addEventListener('click', event => {
       const button = event.target.closest('button[data-action]');
       if (!button || !activeItem) return;
