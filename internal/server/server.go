@@ -521,7 +521,7 @@ const indexTemplate = `<!doctype html>
         <div class="group-title"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / {{len .Services}}</span></div>
         <div class="icon-grid">
           {{range .Services}}
-          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
+          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
             <button class="icon-button" type="button" aria-label="{{.Name}}">
               {{if .IconIsOnline}}<img src="{{.IconImageSrc}}" alt="">{{else if .IconIsImage}}<img src="{{.Icon}}" alt="">{{else}}<span class="icon-fallback">{{.DisplayIconText}}</span>{{end}}
               <span class="health-dot" data-status="unknown"></span>
@@ -601,7 +601,7 @@ const indexTemplate = `<!doctype html>
       return '/.iconify/' + encodeURIComponent(parts[0]) + '/' + encodeURIComponent(parts[1]) + '.svg';
     }
     function iconMarkup(item) {
-      const icon = item.dataset.icon || '';
+      const icon = item.dataset.iconValue || '';
       const text = item.dataset.iconText || (item.dataset.name || '?').slice(0, 3).toUpperCase();
       if (icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('/')) return '<img src="' + escapeHTML(icon) + '" alt="">';
       if (icon.includes(':')) return '<img src="' + escapeHTML(onlineIconSrc(icon)) + '" alt="">';
@@ -643,7 +643,7 @@ const indexTemplate = `<!doctype html>
       form.name.value = item.dataset.name || '';
       form.description.value = item.dataset.description || '';
       form.icon_text.value = item.dataset.iconText || '';
-      form.icon.value = item.dataset.icon || '';
+      form.icon.value = item.dataset.iconValue || '';
       form.external_url.value = item.dataset.externalUrl || '';
       form.internal_url.value = item.dataset.internalUrl || '';
       form.group_id.value = item.dataset.groupId || '';
@@ -660,7 +660,7 @@ const indexTemplate = `<!doctype html>
     }
     function closeEdit() { backdrop.classList.remove('is-open'); }
     function refreshPreview() {
-      const mock = { dataset: { icon: form.icon.value, iconText: form.icon_text.value, name: form.name.value } };
+      const mock = { dataset: { iconValue: form.icon.value, iconText: form.icon_text.value, name: form.name.value } };
       document.querySelector('#preview-wide-icon').innerHTML = iconMarkup(mock);
       document.querySelector('#preview-square-icon').innerHTML = iconMarkup(mock);
       document.querySelector('#preview-wide-name').textContent = form.name.value || '-';
