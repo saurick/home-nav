@@ -189,9 +189,6 @@ func (c *Config) NormalizeAndValidate() error {
 			serviceIDs[service.ID] = struct{}{}
 		}
 	}
-	if len(serviceIDs) == 0 {
-		return fmt.Errorf("配置错误: 至少需要配置一个服务")
-	}
 	return nil
 }
 

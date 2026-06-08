@@ -54,6 +54,15 @@ type ServiceUpdateRequest struct {
 	Health      ServiceHealthUpdateRequest `json:"health"`
 }
 
+type ServiceSortRequest struct {
+	Groups []ServiceSortGroupRequest `json:"groups"`
+}
+
+type ServiceSortGroupRequest struct {
+	GroupID    string   `json:"group_id"`
+	ServiceIDs []string `json:"service_ids"`
+}
+
 type AppearanceUpdateRequest struct {
 	BackgroundColor string `json:"background_color"`
 	BackgroundImage string `json:"background_image"`
@@ -106,6 +115,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
+	s.mux.HandleFunc("/api/services/sort", s.handleServiceSort)
 	s.mux.HandleFunc("/api/services", s.handleServices)
 	s.mux.HandleFunc("/api/services/", s.handleService)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
@@ -180,7 +190,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"service": service})
 }
 
-func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServiceSort(w http.ResponseWriter, r *http.Request) {
 	if !s.authenticated(r) {
 		writeJSONError(w, http.StatusUnauthorized, "请先登录")
 		return
@@ -190,9 +200,67 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var payload ServiceSortRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+
+	cfg, err := s.sortServices(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+	s.statuses.UpdateConfig(cfg)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPut && r.Method != http.MethodDelete {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
 	id := strings.TrimPrefix(r.URL.Path, "/api/services/")
 	if id == "" || strings.Contains(id, "/") {
 		writeJSONError(w, http.StatusNotFound, "服务不存在")
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		cfg, err := s.deleteService(id)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := SaveConfig(s.configPath, cfg); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		s.mu.Lock()
+		s.cfg = cfg
+		s.mu.Unlock()
+		s.statuses.UpdateConfig(cfg)
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id})
 		return
 	}
 
@@ -485,6 +553,84 @@ func (s *Server) updateService(id string, payload ServiceUpdateRequest) (*Config
 	return nil, Service{}, fmt.Errorf("服务更新失败")
 }
 
+func (s *Server) deleteService(id string) (*Config, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	groupIndex, serviceIndex := findService(cfg, id)
+	if groupIndex < 0 {
+		return nil, fmt.Errorf("服务不存在")
+	}
+
+	services := cfg.Groups[groupIndex].Services
+	cfg.Groups[groupIndex].Services = append(services[:serviceIndex], services[serviceIndex+1:]...)
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func (s *Server) sortServices(payload ServiceSortRequest) (*Config, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	if len(payload.Groups) != len(cfg.Groups) {
+		return nil, fmt.Errorf("排序数据必须包含全部分组")
+	}
+
+	groupIndex := make(map[string]int, len(cfg.Groups))
+	serviceByID := make(map[string]Service)
+	for gi, group := range cfg.Groups {
+		groupIndex[group.ID] = gi
+		for _, service := range group.Services {
+			serviceByID[service.ID] = service
+		}
+	}
+
+	groupSeen := make(map[string]struct{}, len(cfg.Groups))
+	serviceSeen := make(map[string]struct{}, len(serviceByID))
+	nextServices := make([][]Service, len(cfg.Groups))
+	for _, groupOrder := range payload.Groups {
+		groupID := strings.TrimSpace(groupOrder.GroupID)
+		gi, ok := groupIndex[groupID]
+		if !ok {
+			return nil, fmt.Errorf("分组不存在")
+		}
+		if _, ok := groupSeen[groupID]; ok {
+			return nil, fmt.Errorf("排序数据包含重复分组")
+		}
+		groupSeen[groupID] = struct{}{}
+		for _, rawServiceID := range groupOrder.ServiceIDs {
+			serviceID := strings.TrimSpace(rawServiceID)
+			service, ok := serviceByID[serviceID]
+			if !ok {
+				return nil, fmt.Errorf("服务不存在")
+			}
+			if _, ok := serviceSeen[serviceID]; ok {
+				return nil, fmt.Errorf("排序数据包含重复服务")
+			}
+			serviceSeen[serviceID] = struct{}{}
+			nextServices[gi] = append(nextServices[gi], service)
+		}
+	}
+	if len(groupSeen) != len(cfg.Groups) {
+		return nil, fmt.Errorf("排序数据必须包含全部分组")
+	}
+	if len(serviceSeen) != len(serviceByID) {
+		return nil, fmt.Errorf("排序数据必须包含全部服务")
+	}
+
+	for gi := range cfg.Groups {
+		cfg.Groups[gi].Services = nextServices[gi]
+	}
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (s *Server) updateAppearance(payload AppearanceUpdateRequest) (*Config, error) {
 	s.mu.RLock()
 	cfg := cloneConfig(s.cfg)
@@ -644,9 +790,13 @@ const indexTemplate = `<!doctype html>
     .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 52px 0 80px; }
     .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
     .top-tools form { margin: 0; }
-    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
-    .tool-button:hover { background: #242424; }
-    .tool-button iconify-icon { font-size: 22px; }
+	    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
+	    .tool-button:hover { background: #242424; }
+	    .tool-button:disabled { cursor: default; opacity: .42; }
+	    .tool-button:disabled:hover { background: #141414; }
+	    .sort-button { display: none; }
+	    body.is-edit-mode .sort-button { display: grid; }
+	    .tool-button iconify-icon { font-size: 22px; }
     .hero { display: grid; justify-items: center; gap: 22px; margin-bottom: 52px; }
     .title-row { display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap; }
     h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .95; letter-spacing: 0; font-weight: 800; }
@@ -667,9 +817,13 @@ const indexTemplate = `<!doctype html>
     .group-action { width: 38px; height: 38px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .group-action:hover, .group-action.is-active { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.08); }
     .group-action iconify-icon { font-size: 26px; }
-    .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 28px 20px; align-items: start; }
-    .app-icon { display: grid; justify-items: center; gap: 8px; min-width: 0; color: #fff; }
-    .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
+	    .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 28px 20px; align-items: start; }
+	    .app-icon { display: grid; justify-items: center; gap: 8px; min-width: 0; color: #fff; }
+	    body.is-edit-mode .app-icon { cursor: grab; touch-action: none; }
+	    body.is-dragging, body.is-dragging * { user-select: none; }
+	    body.is-dragging .app-icon { cursor: grabbing; }
+	    .app-icon.is-dragging { opacity: .42; transform: scale(.96); }
+	    .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
     .icon-button:hover { transform: translateY(-2px); background: #1f1f1f; }
     body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
     .icon-button:focus-visible { outline: 3px solid rgba(103, 224, 182, .45); outline-offset: 3px; }
@@ -724,6 +878,7 @@ const indexTemplate = `<!doctype html>
     .save-button, .delete-button { min-width: 118px; min-height: 58px; border: 0; border-radius: 7px; font-size: 24px; cursor: pointer; }
     .save-button { background: var(--accent); color: #050505; }
     .delete-button { background: var(--danger); color: #050505; display: none; }
+    .delete-button.is-visible { display: inline-block; }
     .settings-preview { min-height: 170px; border: 1px solid #676873; border-radius: 16px; background: #000; display: grid; place-items: center; color: #fff; margin-bottom: 24px; overflow: hidden; }
     .settings-preview span { padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.58); color: #fff; }
     .color-row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; }
@@ -762,9 +917,10 @@ const indexTemplate = `<!doctype html>
   </style>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}">
-  <div class="top-tools">
-    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
-    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
+	  <div class="top-tools">
+	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
+	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon></button>
+	    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
     {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
   </div>
   <main class="shell">
@@ -780,7 +936,7 @@ const indexTemplate = `<!doctype html>
       {{range .Groups}}
       <section class="group" data-group-id="{{.ID}}">
         <div class="group-title">
-          <div class="group-heading"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / {{len .Services}}</span></div>
+	          <div class="group-heading"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / <span class="group-total-count">{{len .Services}}</span></span></div>
           <div class="group-actions">
             <button class="group-action" type="button" data-action="add-service" data-group-id="{{.ID}}" title="新增入口"><iconify-icon icon="mdi:plus"></iconify-icon></button>
             <button class="group-action edit-mode-button" type="button" data-action="toggle-edit-mode" title="编辑模式"><iconify-icon icon="mdi:cursor-default-click-outline"></iconify-icon></button>
@@ -808,6 +964,7 @@ const indexTemplate = `<!doctype html>
     <div class="menu-section"><p class="menu-title">打开内网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal"><iconify-icon icon="mdi:open-in-new"></iconify-icon></button><button class="menu-icon" type="button" data-action="copy-internal"><iconify-icon icon="mdi:link-variant"></iconify-icon></button></div></div>
     <div class="menu-line"></div>
     <button class="menu-command" type="button" data-action="edit"><iconify-icon icon="mdi:pencil-box-outline"></iconify-icon>编辑</button>
+    <button class="menu-command" type="button" data-action="delete"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon>删除</button>
   </div>
 
   <div class="modal-backdrop" id="edit-backdrop">
@@ -832,7 +989,7 @@ const indexTemplate = `<!doctype html>
           <div class="field"><label>TCP 地址</label><input name="health_address" placeholder="host:port"></div>
           <div class="field"><label>超时时间</label><input name="health_timeout" placeholder="2s"></div>
         </div>
-        <div class="form-actions"><button class="save-button" type="submit">保存</button></div>
+        <div class="form-actions"><button class="delete-button" type="button" id="delete-service-button">删除</button><button class="save-button" type="submit">保存</button></div>
       </form>
     </section>
   </div>
@@ -867,14 +1024,19 @@ const indexTemplate = `<!doctype html>
     const uploadBackgroundFile = document.querySelector('#upload-background-file');
     const settingsPreview = document.querySelector('#settings-preview');
     const editTitle = document.querySelector('#edit-title');
-    const saveButton = form.querySelector('.save-button');
-    const accessModeButton = document.querySelector('#access-mode-button');
+	    const saveButton = form.querySelector('.save-button');
+	    const deleteButton = document.querySelector('#delete-service-button');
+	    const saveSortButton = document.querySelector('#save-sort-button');
+	    const accessModeButton = document.querySelector('#access-mode-button');
     const accessModeIcon = document.querySelector('#access-mode-icon');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
-    let activeItem = null;
-    let editMode = false;
-    let accessMode = 'external';
+	    let activeItem = null;
+	    let editMode = false;
+	    let accessMode = 'external';
+	    let sortDirty = false;
+	    let dragState = null;
+	    let suppressNextEditClick = false;
 
     function field(name) { return form.elements.namedItem(name); }
     function settingField(name) { return settingsForm.elements.namedItem(name); }
@@ -935,11 +1097,13 @@ const indexTemplate = `<!doctype html>
         item.classList.toggle('is-hidden', !visible);
         if (visible) visibleTotal += 1;
       }
-      for (const group of groups) {
-        const count = group.querySelectorAll('.app-icon:not(.is-hidden)').length;
-        group.classList.toggle('is-hidden', count === 0);
-        group.querySelector('.group-visible-count').textContent = String(count);
-      }
+	      for (const group of groups) {
+	        const totalCount = group.querySelectorAll('.app-icon').length;
+	        const visibleCount = group.querySelectorAll('.app-icon:not(.is-hidden)').length;
+	        group.classList.toggle('is-hidden', visibleCount === 0);
+	        group.querySelector('.group-visible-count').textContent = String(visibleCount);
+	        group.querySelector('.group-total-count').textContent = String(totalCount);
+	      }
       document.body.classList.toggle('is-empty', visibleTotal === 0);
     }
     function openMenuAt(item, left, top) {
@@ -956,15 +1120,25 @@ const indexTemplate = `<!doctype html>
       openMenuAt(item, rect.left, rect.bottom + 10);
     }
     function closeMenu() { menu.classList.remove('is-open'); menu.setAttribute('aria-hidden', 'true'); }
-    function setEditMode(value) {
-      editMode = value;
-      document.body.classList.toggle('is-edit-mode', editMode);
-      for (const button of document.querySelectorAll('.edit-mode-button')) button.classList.toggle('is-active', editMode);
-      showToast(editMode ? '编辑模式已开启' : '编辑模式已关闭');
-    }
+	    function setEditMode(value) {
+	      editMode = value;
+	      document.body.classList.toggle('is-edit-mode', editMode);
+	      for (const button of document.querySelectorAll('.edit-mode-button')) button.classList.toggle('is-active', editMode);
+	      saveSortButton.disabled = !sortDirty;
+	      showToast(editMode ? '编辑模式已开启' : (sortDirty ? '编辑模式已关闭，排序未保存' : '编辑模式已关闭'));
+	    }
+	    function suppressEditClickOnce() {
+	      suppressNextEditClick = true;
+	      window.setTimeout(() => { suppressNextEditClick = false; }, 240);
+	    }
+	    function setSortDirty(value) {
+	      sortDirty = value;
+	      saveSortButton.disabled = !sortDirty;
+	    }
     function resetServiceForm(groupID) {
       editTitle.textContent = '新增入口';
       saveButton.textContent = '新增';
+      deleteButton.classList.remove('is-visible');
       field('id').value = '';
       field('name').value = '';
       field('description').value = '';
@@ -991,6 +1165,7 @@ const indexTemplate = `<!doctype html>
       activeItem = item;
       editTitle.textContent = '编辑入口';
       saveButton.textContent = '保存';
+      deleteButton.classList.add('is-visible');
       field('id').value = item.dataset.serviceId;
       field('name').value = item.dataset.name || '';
       field('description').value = item.dataset.description || '';
@@ -1109,7 +1284,22 @@ const indexTemplate = `<!doctype html>
       showToast(id ? '已保存' : '已新增');
       setTimeout(() => location.reload(), 500);
     }
-    async function saveSettings(event) {
+    async function deleteServiceByID(id, name) {
+      if (!id) return;
+      if (!window.confirm('确定删除“' + (name || '当前入口') + '”这个导航入口吗？')) return;
+      const response = await fetch('/api/services/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: '删除失败' }));
+        showToast(error.error || '删除失败');
+        return;
+      }
+      showToast('已删除');
+      setTimeout(() => location.reload(), 500);
+    }
+    async function deleteItem() {
+      await deleteServiceByID(field('id').value, field('name').value);
+    }
+	    async function saveSettings(event) {
       event.preventDefault();
       const payload = {
         background_color: settingField('background_color').value,
@@ -1125,8 +1315,34 @@ const indexTemplate = `<!doctype html>
       document.body.dataset.backgroundImage = payload.background_image;
       applyBodyBackground(payload.background_color, payload.background_image);
       showToast('页面设置已保存');
-      closeSettings();
-    }
+	      closeSettings();
+	    }
+	    function sortPayload() {
+	      return {
+	        groups: groups.map(group => ({
+	          group_id: group.dataset.groupId,
+	          service_ids: [...group.querySelectorAll('.app-icon')].map(item => item.dataset.serviceId)
+	        }))
+	      };
+	    }
+	    async function saveSort() {
+	      if (!sortDirty) return;
+	      saveSortButton.disabled = true;
+	      const response = await fetch('/api/services/sort', {
+	        method: 'PUT',
+	        headers: { 'Content-Type': 'application/json' },
+	        body: JSON.stringify(sortPayload())
+	      });
+	      if (!response.ok) {
+	        const error = await response.json().catch(() => ({ error: '保存排序失败' }));
+	        showToast(error.error || '保存排序失败');
+	        saveSortButton.disabled = false;
+	        return;
+	      }
+	      setSortDirty(false);
+	      showToast('排序已保存');
+	      setTimeout(() => location.reload(), 500);
+	    }
     async function uploadIcon(file) {
       if (!file) return;
       const formData = new FormData();
@@ -1149,7 +1365,7 @@ const indexTemplate = `<!doctype html>
         uploadFile.value = '';
       }
     }
-    async function uploadBackground(file) {
+	    async function uploadBackground(file) {
       if (!file) return;
       const formData = new FormData();
       formData.append('file', file);
@@ -1170,15 +1386,113 @@ const indexTemplate = `<!doctype html>
         uploadBackgroundButton.textContent = '上传图片';
         uploadBackgroundFile.value = '';
       }
-    }
+	    }
+	    function beginDrag(state) {
+	      if (normalize(searchInput.value)) {
+	        suppressEditClickOnce();
+	        showToast('清空搜索后再排序');
+	        return false;
+	      }
+	      state.dragging = true;
+	      state.item.classList.add('is-dragging');
+	      state.item.style.pointerEvents = 'none';
+	      document.body.classList.add('is-dragging');
+	      closeMenu();
+	      return true;
+	    }
+	    function finishDrag() {
+	      if (!dragState) return;
+	      const state = dragState;
+	      if (state.dragging && Number.isFinite(state.lastX) && Number.isFinite(state.lastY)) {
+	        placeDraggedItem(state.lastX, state.lastY);
+	      }
+	      dragState = null;
+	      state.item.classList.remove('is-dragging');
+	      state.item.style.pointerEvents = '';
+	      document.body.classList.remove('is-dragging');
+	      try { state.button.releasePointerCapture(state.pointerId); } catch (_) {}
+	      if (state.dragging) {
+	        const group = state.item.closest('.group');
+	        if (group) state.item.dataset.groupId = group.dataset.groupId || '';
+	        suppressEditClickOnce();
+	        if (JSON.stringify(sortPayload()) !== state.startOrder) setSortDirty(true);
+	        applyFilters();
+	      }
+	    }
+	    function placeDraggedItem(clientX, clientY) {
+	      if (!dragState?.dragging) return;
+	      const target = document.elementFromPoint(clientX, clientY);
+	      if (!target) return;
+	      const targetItem = target.closest('.app-icon:not(.is-dragging)');
+	      if (targetItem) {
+	        const rect = targetItem.getBoundingClientRect();
+	        const centerX = rect.left + rect.width / 2;
+	        const upperBand = rect.top + rect.height * .35;
+	        const lowerBand = rect.top + rect.height * .65;
+	        const before = clientY < upperBand || (clientY <= lowerBand && clientX < centerX);
+	        if (before) targetItem.before(dragState.item);
+	        else targetItem.after(dragState.item);
+	        return;
+	      }
+	      const targetGrid = target.closest('.icon-grid');
+	      if (targetGrid) targetGrid.append(dragState.item);
+	    }
+	    function startDragPointer(event, item, button) {
+	      if (!editMode || event.button !== 0) return;
+	      dragState = { item, button, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, startOrder: JSON.stringify(sortPayload()), dragging: false };
+	      button.setPointerCapture(event.pointerId);
+	    }
+	    function moveDragPointer(event) {
+	      if (!dragState || dragState.pointerId !== event.pointerId) return;
+	      dragState.lastX = event.clientX;
+	      dragState.lastY = event.clientY;
+	      const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY);
+	      if (!dragState.dragging && distance > 8 && !beginDrag(dragState)) {
+	        dragState = null;
+	        return;
+	      }
+	      if (dragState?.dragging) {
+	        event.preventDefault();
+	        placeDraggedItem(event.clientX, event.clientY);
+	      }
+	    }
+	    function endDragPointer(event) {
+	      if (dragState?.pointerId === event.pointerId) finishDrag();
+	    }
+	    function startMouseDrag(event, item, button) {
+	      if (!editMode || event.button !== 0) return;
+	      dragState = { item, button, pointerId: 'mouse', startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, startOrder: JSON.stringify(sortPayload()), dragging: false };
+	    }
+	    function moveMouseDrag(event) {
+	      if (!dragState || dragState.pointerId !== 'mouse') return;
+	      dragState.lastX = event.clientX;
+	      dragState.lastY = event.clientY;
+	      const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY);
+	      if (!dragState.dragging && distance > 8 && !beginDrag(dragState)) {
+	        dragState = null;
+	        return;
+	      }
+	      if (dragState?.dragging) {
+	        event.preventDefault();
+	        placeDraggedItem(event.clientX, event.clientY);
+	      }
+	    }
+	    function endMouseDrag() {
+	      if (dragState?.pointerId === 'mouse') finishDrag();
+	    }
 
-    for (const item of items) {
-      const button = item.querySelector('.icon-button');
-      let longPressTimer = null;
-      let suppressClick = false;
-      button.addEventListener('click', event => {
-        if (editMode) {
-          event.preventDefault();
+	    for (const item of items) {
+	      const button = item.querySelector('.icon-button');
+	      let longPressTimer = null;
+	      let suppressClick = false;
+	      button.addEventListener('dragstart', event => event.preventDefault());
+	      button.addEventListener('click', event => {
+	        if (suppressNextEditClick) {
+	          event.preventDefault();
+	          return;
+	        }
+	        if (editMode) {
+	          event.preventDefault();
           openEdit(item);
           return;
         }
@@ -1191,24 +1505,40 @@ const indexTemplate = `<!doctype html>
         event.preventDefault();
         openMenuAt(item, event.clientX, event.clientY);
       });
-      button.addEventListener('pointerdown', event => {
-        if (event.pointerType === 'mouse') return;
-        window.clearTimeout(longPressTimer);
+	      button.addEventListener('pointerdown', event => {
+	        if (editMode) {
+	          startDragPointer(event, item, button);
+	          return;
+	        }
+	        if (event.pointerType === 'mouse') return;
+	        window.clearTimeout(longPressTimer);
         longPressTimer = window.setTimeout(() => {
           suppressClick = true;
           openMenuNear(item, button);
         }, 520);
-      });
-      for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) {
-        button.addEventListener(eventName, () => window.clearTimeout(longPressTimer));
-      }
-    }
-    document.addEventListener('click', event => {
-      const actionButton = event.target.closest('.group-action[data-action]');
-      if (!actionButton) return;
-      if (actionButton.dataset.action === 'add-service') openCreate(actionButton.dataset.groupId || '');
-      if (actionButton.dataset.action === 'toggle-edit-mode') setEditMode(!editMode);
-    });
+	      });
+	      button.addEventListener('pointermove', moveDragPointer);
+	      button.addEventListener('mousedown', event => startMouseDrag(event, item, button));
+	      for (const eventName of ['pointerup', 'pointercancel']) {
+	        button.addEventListener(eventName, event => {
+	          window.clearTimeout(longPressTimer);
+	          endDragPointer(event);
+	        });
+	      }
+	      button.addEventListener('pointerleave', () => {
+	        if (!dragState) window.clearTimeout(longPressTimer);
+	      });
+	    }
+	    document.addEventListener('click', event => {
+	      const actionButton = event.target.closest('.group-action[data-action]');
+	      if (!actionButton) return;
+	      if (actionButton.dataset.action === 'add-service') openCreate(actionButton.dataset.groupId || '');
+	      if (actionButton.dataset.action === 'toggle-edit-mode') setEditMode(!editMode);
+	    });
+	    document.addEventListener('pointerup', endDragPointer);
+	    document.addEventListener('pointercancel', endDragPointer);
+	    document.addEventListener('mousemove', moveMouseDrag);
+	    document.addEventListener('mouseup', endMouseDrag);
     menu.addEventListener('click', event => {
       const button = event.target.closest('button[data-action]');
       if (!button || !activeItem) return;
@@ -1218,9 +1548,14 @@ const indexTemplate = `<!doctype html>
       if (action === 'copy-external') copyText(itemURL('external'));
       if (action === 'copy-internal') copyText(itemURL('internal'));
       if (action === 'edit') openEdit(activeItem);
+      if (action === 'delete') {
+        closeMenu();
+        deleteServiceByID(activeItem.dataset.serviceId, activeItem.dataset.name);
+      }
     });
-    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
-    accessModeButton.addEventListener('click', toggleAccessMode);
+	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
+	    accessModeButton.addEventListener('click', toggleAccessMode);
+	    saveSortButton.addEventListener('click', saveSort);
     document.querySelector('#open-settings-button').addEventListener('click', openSettings);
     document.querySelector('#edit-close').addEventListener('click', closeEdit);
     document.querySelector('#settings-close').addEventListener('click', closeSettings);
@@ -1228,6 +1563,7 @@ const indexTemplate = `<!doctype html>
     settingsBackdrop.addEventListener('click', event => { if (event.target === settingsBackdrop) closeSettings(); });
     form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', saveItem);
+    deleteButton.addEventListener('click', deleteItem);
     settingsForm.addEventListener('submit', saveSettings);
     settingsForm.addEventListener('input', () => applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview));
     settingField('background_color_picker').addEventListener('input', () => {

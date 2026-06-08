@@ -101,6 +101,27 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 	}
 }
 
+func TestIndexIncludesDragSortControls(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "window.confirm", "startDragPointer", "sortPayload"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
+	}
+}
+
 func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
@@ -282,6 +303,109 @@ func TestServiceCreateSavesConfig(t *testing.T) {
 	got := cfg.Groups[0].Services[1]
 	if got.ID != "new-tool" || got.Name != "New Tool" || got.Health.Type != "disabled" {
 		t.Fatalf("service was not created correctly: %#v", got)
+	}
+}
+
+func TestServiceDeleteSavesConfig(t *testing.T) {
+	configPath := writeTempConfig(t, authTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/services/app", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	if len(cfg.Groups) != 1 {
+		t.Fatalf("expected group to remain, got %d groups", len(cfg.Groups))
+	}
+	if len(cfg.Groups[0].Services) != 0 {
+		t.Fatalf("expected service to be deleted, got %#v", cfg.Groups[0].Services)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	statusReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	statusRec := httptest.NewRecorder()
+	srv.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("expected status endpoint %d, got %d", http.StatusOK, statusRec.Code)
+	}
+	var payload StatusResponse
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid status json: %v", err)
+	}
+	if len(payload.Services) != 0 {
+		t.Fatalf("expected no service statuses, got %#v", payload.Services)
+	}
+}
+
+func TestServiceSortSavesConfig(t *testing.T) {
+	configPath := writeTempConfig(t, sortTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	body := []byte(`{
+		"groups": [
+			{"group_id": "ops", "service_ids": ["metrics"]},
+			{"group_id": "tools", "service_ids": ["app", "drawio"]}
+		]
+	}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/services/sort", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	gotOps := serviceIDs(cfg.Groups[0].Services)
+	gotTools := serviceIDs(cfg.Groups[1].Services)
+	if strings.Join(gotOps, ",") != "metrics" {
+		t.Fatalf("unexpected ops order: %v", gotOps)
+	}
+	if strings.Join(gotTools, ",") != "app,drawio" {
+		t.Fatalf("unexpected tools order: %v", gotTools)
+	}
+}
+
+func TestServiceSortRejectsIncompleteOrder(t *testing.T) {
+	configPath := writeTempConfig(t, sortTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	body := []byte(`{
+		"groups": [
+			{"group_id": "ops", "service_ids": ["app"]}
+		]
+	}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/services/sort", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
 	}
 }
 
@@ -593,7 +717,7 @@ func writeTempConfig(t *testing.T, content string) string {
 }
 
 func authTestConfig() string {
-	return `
+	return strings.TrimSpace(`
 title: 测试导航
 check_interval: 30s
 auth:
@@ -611,5 +735,48 @@ groups:
         internal_url: http://app.example.local
         health:
           type: disabled
-`
+`) + "\n"
+}
+
+func sortTestConfig() string {
+	return strings.TrimSpace(`
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+      - id: metrics
+        name: Metrics
+        internal_url: http://metrics.example.local
+        health:
+          type: disabled
+  - id: tools
+    name: 工具
+    services:
+      - id: drawio
+        name: Draw.io
+        internal_url: http://drawio.example.local
+        health:
+          type: disabled
+`) + "\n"
+}
+
+func serviceIDs(services []Service) []string {
+	ids := make([]string, 0, len(services))
+	for _, service := range services {
+		ids = append(ids, service.ID)
+	}
+	return ids
 }
