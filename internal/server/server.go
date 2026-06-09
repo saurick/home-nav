@@ -1473,6 +1473,57 @@ const indexTemplate = `<!doctype html>
 	      if (clientY > window.innerHeight - edge) step = Math.ceil((clientY - (window.innerHeight - edge)) / edge * maxStep);
 	      if (step) window.scrollBy({ top: step, behavior: 'auto' });
 	    }
+	    function animatedSortNodes() {
+	      return [...document.querySelectorAll('.app-icon:not(.is-dragging), .drag-placeholder')];
+	    }
+	    function captureSortRects() {
+	      const rects = new Map();
+	      for (const node of animatedSortNodes()) {
+	        if (node.getClientRects().length) rects.set(node, node.getBoundingClientRect());
+	      }
+	      return rects;
+	    }
+	    function animateGridMove(mutator) {
+	      const before = captureSortRects();
+	      mutator();
+	      const moved = [];
+	      for (const node of animatedSortNodes()) {
+	        const first = before.get(node);
+	        if (!first) continue;
+	        const last = node.getBoundingClientRect();
+	        const dx = first.left - last.left;
+	        const dy = first.top - last.top;
+	        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+	        node.style.transition = 'none';
+	        node.style.transform = 'translate3d(' + Math.round(dx) + 'px,' + Math.round(dy) + 'px,0)';
+	        moved.push(node);
+	      }
+	      if (!moved.length) return;
+	      for (const node of moved) node.getBoundingClientRect();
+	      window.requestAnimationFrame(() => {
+	        for (const node of moved) {
+	          node.style.transition = 'transform 150ms cubic-bezier(.2,0,.2,1)';
+	          node.style.transform = 'translate3d(0,0,0)';
+	          window.setTimeout(() => {
+	            if (node.classList.contains('is-dragging')) return;
+	            node.style.transition = '';
+	            node.style.transform = '';
+	          }, 180);
+	        }
+	      });
+	    }
+	    function movePlaceholderBefore(targetItem) {
+	      if (dragState.placeholder.nextElementSibling === targetItem) return;
+	      animateGridMove(() => targetItem.before(dragState.placeholder));
+	    }
+	    function movePlaceholderAfter(targetItem) {
+	      if (dragState.placeholder.previousElementSibling === targetItem) return;
+	      animateGridMove(() => targetItem.after(dragState.placeholder));
+	    }
+	    function appendPlaceholderTo(targetGrid) {
+	      if (dragState.placeholder.parentElement === targetGrid && !dragState.placeholder.nextElementSibling) return;
+	      animateGridMove(() => targetGrid.append(dragState.placeholder));
+	    }
 	    function beginDrag(state) {
 	      if (normalize(searchInput.value)) {
 	        suppressEditClickOnce();
@@ -1527,12 +1578,12 @@ const indexTemplate = `<!doctype html>
 	        const upperBand = rect.top + rect.height * .35;
 	        const lowerBand = rect.top + rect.height * .65;
 	        const before = clientY < upperBand || (clientY <= lowerBand && clientX < centerX);
-	        if (before) targetItem.before(dragState.placeholder);
-	        else targetItem.after(dragState.placeholder);
+	        if (before) movePlaceholderBefore(targetItem);
+	        else movePlaceholderAfter(targetItem);
 	        return;
 	      }
 	      const targetGrid = target.closest('.icon-grid');
-	      if (targetGrid) targetGrid.append(dragState.placeholder);
+	      if (targetGrid) appendPlaceholderTo(targetGrid);
 	    }
 	    function startDragPointer(event, item, button) {
 	      if (!editMode || event.button !== 0) return;
