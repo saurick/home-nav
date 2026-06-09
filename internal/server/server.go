@@ -1389,6 +1389,7 @@ const indexTemplate = `<!doctype html>
     let sortDirty = false;
 	    let sortSaving = false;
 	    let sortSaveQueued = false;
+	    const sortAnimations = new WeakMap();
 	    let groupSortDirty = false;
 	    let groupSortSaving = false;
 	    let dragState = null;
@@ -1919,6 +1920,11 @@ const indexTemplate = `<!doctype html>
 	      }
 	      return rects;
 	    }
+	    function clearSortAnimation(node, animation) {
+	      if (sortAnimations.get(node) !== animation) return;
+	      sortAnimations.delete(node);
+	      node.style.willChange = '';
+	    }
 	    function animateGridMove(mutator) {
 	      const before = captureSortRects();
 	      mutator();
@@ -1926,42 +1932,48 @@ const indexTemplate = `<!doctype html>
 	      for (const node of animatedSortNodes()) {
 	        const first = before.get(node);
 	        if (!first) continue;
-	        const last = node.getBoundingClientRect();
+	        const existing = sortAnimations.get(node);
+	        if (existing) {
+	          existing.cancel();
+	          sortAnimations.delete(node);
+	        }
+	        node.style.transition = '';
+	        node.style.transform = '';
+	        const last = layoutSortRect(node);
 	        const dx = first.left - last.left;
 	        const dy = first.top - last.top;
 	        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-	        node.style.transition = 'none';
-	        node.style.transform = 'translate3d(' + Math.round(dx) + 'px,' + Math.round(dy) + 'px,0)';
-	        moved.push(node);
+	        moved.push({ node, dx: Math.round(dx), dy: Math.round(dy) });
 	      }
 	      if (!moved.length) return;
-	      for (const node of moved) node.getBoundingClientRect();
-	      window.requestAnimationFrame(() => {
-	        for (const node of moved) {
-	          const token = String(Date.now()) + Math.random();
-	          node.dataset.sortAnimationToken = token;
-	          node.style.transition = 'transform 180ms cubic-bezier(.22,1,.36,1)';
-	          node.style.transform = 'translate3d(0,0,0)';
-	          window.setTimeout(() => {
-	            if (node.classList.contains('is-dragging')) return;
-	            if (node.dataset.sortAnimationToken !== token) return;
-	            delete node.dataset.sortAnimationToken;
-	            node.style.transition = '';
-	            node.style.transform = '';
-	          }, 220);
+	      for (const { node, dx, dy } of moved) {
+	        if (typeof node.animate !== 'function') {
+	          node.style.transition = 'transform 220ms cubic-bezier(.16,1,.3,1)';
+	          node.style.transform = 'translate3d(' + dx + 'px,' + dy + 'px,0)';
+	          node.getBoundingClientRect();
+	          window.requestAnimationFrame(() => { node.style.transform = ''; });
+	          window.setTimeout(() => { node.style.transition = ''; }, 260);
+	          continue;
 	        }
-	      });
+	        node.style.willChange = 'transform';
+	        const animation = node.animate([
+	          { transform: 'translate3d(' + dx + 'px,' + dy + 'px,0)' },
+	          { transform: 'translate3d(0,0,0)' }
+	        ], { duration: 240, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'none' });
+	        sortAnimations.set(node, animation);
+	        animation.onfinish = () => clearSortAnimation(node, animation);
+	        animation.oncancel = () => clearSortAnimation(node, animation);
+	      }
 	    }
 	    function layoutSortRect(node) {
-	      const transition = node.style.transition;
-	      const transform = node.style.transform;
-	      if (!transform || transform === 'translate3d(0,0,0)') return node.getBoundingClientRect();
-	      node.style.transition = 'none';
-	      node.style.transform = '';
-	      const rect = node.getBoundingClientRect();
-	      node.style.transform = transform;
-	      node.style.transition = transition;
-	      return rect;
+	      const parent = node.offsetParent;
+	      if (!parent) return node.getBoundingClientRect();
+	      const parentRect = parent.getBoundingClientRect();
+	      const left = parentRect.left + node.offsetLeft;
+	      const top = parentRect.top + node.offsetTop;
+	      const width = node.offsetWidth;
+	      const height = node.offsetHeight;
+	      return { left, top, right: left + width, bottom: top + height, width, height };
 	    }
 	    function sortRowsFor(items) {
 	      const rows = [];
