@@ -216,7 +216,7 @@ func openHref(target string) string {
 	if target == "" {
 		return "#"
 	}
-	return "/open?url=" + url.QueryEscape(target)
+	return target
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -1831,8 +1831,8 @@ const indexTemplate = `<!doctype html>
 	    function groupField(name) { return groupForm.elements.namedItem(name); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
-    function openHref(url) { return url ? '/open?url=' + encodeURIComponent(url) : '#'; }
-    function openEntryURL(url) { url ? window.open(openHref(url), '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
+    function openHref(url) { return url || '#'; }
+    function openEntryURL(url) { url ? window.open(url, '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
     function preferredURL(item, mode) {
       const internalURL = item.dataset.internalUrl || '';
       const externalURL = item.dataset.externalUrl || '';
@@ -2261,14 +2261,46 @@ const indexTemplate = `<!doctype html>
 	      }
 	      refreshGroupMoveButtons();
 	    }
+	    function copyTextFallback(value) {
+	      const previousFocus = document.activeElement;
+	      const textarea = document.createElement('textarea');
+	      textarea.value = value;
+	      textarea.setAttribute('readonly', '');
+	      textarea.style.position = 'fixed';
+	      textarea.style.top = '-9999px';
+	      textarea.style.left = '-9999px';
+	      document.body.appendChild(textarea);
+	      textarea.focus();
+	      textarea.select();
+	      textarea.setSelectionRange(0, textarea.value.length);
+	      let ok = false;
+	      try {
+	        ok = document.execCommand('copy');
+	      } catch (_) {
+	        ok = false;
+	      }
+	      document.body.removeChild(textarea);
+	      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+	      return ok;
+	    }
+	    function showManualCopy(value) {
+	      window.prompt('请手动复制链接', value);
+	      showToast('复制失败，请手动复制');
+	    }
 	    async function copyText(value) {
 	      if (!value) return showToast('没有可复制的链接');
-	      try {
-	        await navigator.clipboard.writeText(value);
-	        showToast('链接已复制');
-	      } catch (_) {
-	        showToast('复制失败，请手动复制');
+	      if (navigator.clipboard?.writeText && window.isSecureContext) {
+	        try {
+	          await navigator.clipboard.writeText(value);
+	          showToast('链接已复制');
+	          return;
+	        } catch (_) {}
 	      }
+	      if (copyTextFallback(value)) {
+	        showToast('链接已复制');
+	        return;
+	      }
+	      showManualCopy(value);
     }
     async function refreshStatus() {
       try {

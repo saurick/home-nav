@@ -103,11 +103,17 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 			t.Fatalf("expected index to contain %q", want)
 		}
 	}
-	if !strings.Contains(body, `href="/open?url=https%3A%2F%2Fdockge.example.com"`) {
-		t.Fatal("index should route service clicks through the browser open page")
+	if !strings.Contains(body, `href="https://dockge.example.com"`) {
+		t.Fatal("index should render service clicks as direct links")
 	}
 	if !strings.Contains(body, "function openHref(url)") || !strings.Contains(body, "function openEntryURL(url)") {
-		t.Fatal("index should route menu opens through the browser open helper")
+		t.Fatal("index should open menu links directly through the browser helper")
+	}
+	if !strings.Contains(body, "function copyTextFallback(value)") || !strings.Contains(body, "document.execCommand('copy')") || !strings.Contains(body, "window.isSecureContext") {
+		t.Fatal("index should provide an insecure-http copy fallback for server access")
+	}
+	if !strings.Contains(body, "function showManualCopy(value)") || !strings.Contains(body, "window.prompt('请手动复制链接', value)") {
+		t.Fatal("index should show the link when browser copy APIs are unavailable")
 	}
 }
 
