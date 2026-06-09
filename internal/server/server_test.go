@@ -103,6 +103,12 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 			t.Fatalf("expected index to contain %q", want)
 		}
 	}
+	if !strings.Contains(body, `href="/open?url=https%3A%2F%2Fdockge.example.com"`) {
+		t.Fatal("index should route service clicks through the browser open page")
+	}
+	if !strings.Contains(body, "function openHref(url)") || !strings.Contains(body, "function openEntryURL(url)") {
+		t.Fatal("index should route menu opens through the browser open helper")
+	}
 }
 
 func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
@@ -124,6 +130,46 @@ func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
 	}
 	if strings.Contains(body, "<h1>Home</h1>") {
 		t.Fatal("index should not render the configured title as visible heading")
+	}
+}
+
+func TestOpenRedirectPage(t *testing.T) {
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	target := "https://www.youtube.com/watch?v=abc123"
+	req := httptest.NewRequest(http.MethodGet, "/open?url="+url.QueryEscape(target), nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("unexpected referrer policy: %q", got)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"<title>Opening...</title>", "window.location.replace(target)", target} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected open redirect page to contain %q", want)
+		}
+	}
+}
+
+func TestOpenRedirectRejectsInvalidURL(t *testing.T) {
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/open?url="+url.QueryEscape("javascript:alert(1)"), nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 }
 

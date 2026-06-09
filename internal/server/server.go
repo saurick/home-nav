@@ -113,6 +113,7 @@ func New(configPath string) (*Server, error) {
 	funcs := template.FuncMap{
 		"icon":        s.inlineIconHTML,
 		"iconJSON":    s.inlineIconJSON,
+		"openHref":    openHref,
 		"serviceIcon": s.serviceIconHTML,
 	}
 	indexTpl, err := template.New("index").Funcs(funcs).Parse(indexTemplate)
@@ -148,6 +149,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/setup", s.handleSetup)
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.handleLogout)
+	s.mux.HandleFunc("/open", s.handleOpen)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/groups/sort", s.handleGroupSort)
 	s.mux.HandleFunc("/api/groups", s.handleGroups)
@@ -178,11 +180,43 @@ func handleFavicon(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(faviconSVG))
 }
 
+func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.setupRequired() {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	if !s.authenticated(r) {
+		redirectToLogin(w, r)
+		return
+	}
+
+	target := strings.TrimSpace(r.URL.Query().Get("url"))
+	if err := validateWebURL("url", target); err != nil {
+		http.Error(w, "invalid url", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	_ = openRedirectTpl.Execute(w, struct{ Target string }{Target: target})
+}
+
 func cacheStatic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=604800")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func openHref(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "#"
+	}
+	return "/open?url=" + url.QueryEscape(target)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -1175,6 +1209,24 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
+const openRedirectTemplate = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>Opening...</title>
+</head>
+<body>
+  <p>正在打开链接。如果没有自动跳转，请使用下面的链接。</p>
+  <p><a href="{{.Target}}" rel="noreferrer">打开链接</a></p>
+  <script>
+    const target = {{.Target}};
+    setTimeout(() => { window.location.replace(target); }, 80);
+  </script>
+</body>
+</html>
+`
+
 func collectTags(groups []Group) []string {
 	seen := make(map[string]struct{})
 	for _, group := range groups {
@@ -1244,6 +1296,8 @@ var fallbackIconText = map[string]string{
 	"mdi:eye":                          "◉",
 	"mdi:eye-off":                      "◎",
 }
+
+var openRedirectTpl = template.Must(template.New("open").Parse(openRedirectTemplate))
 
 func (s *Server) inlineIconJSON(icon string) template.JS {
 	return template.JS(strconv.Quote(string(s.inlineIconHTML(icon))))
@@ -1592,7 +1646,7 @@ const indexTemplate = `<!doctype html>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
-            <a class="icon-button" href="{{.DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
+            <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
               {{serviceIcon .}}
               <span class="health-dot" data-status="unknown"></span>
             </a>
@@ -1771,6 +1825,8 @@ const indexTemplate = `<!doctype html>
 	    function groupField(name) { return groupForm.elements.namedItem(name); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
+    function openHref(url) { return url ? '/open?url=' + encodeURIComponent(url) : '#'; }
+    function openEntryURL(url) { url ? window.open(openHref(url), '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
     function preferredURL(item, mode) {
       const internalURL = item.dataset.internalUrl || '';
       const externalURL = item.dataset.externalUrl || '';
@@ -1792,7 +1848,7 @@ const indexTemplate = `<!doctype html>
       for (const item of items) {
         const link = item.querySelector('.icon-button');
         const url = preferredURL(item, accessMode);
-        if (url) link.href = url;
+        link.href = openHref(url);
         link.dataset.activeUrlType = accessMode;
       }
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
@@ -2672,8 +2728,8 @@ const indexTemplate = `<!doctype html>
       const button = event.target.closest('button[data-action]');
       if (!button || !activeItem) return;
       const action = button.dataset.action;
-      if (action === 'open-external') { const url = itemURL('external'); url ? window.open(url, '_blank', 'noreferrer') : showToast('没有外网入口'); }
-      if (action === 'open-internal') { const url = itemURL('internal'); url ? window.open(url, '_blank', 'noreferrer') : showToast('没有内网入口'); }
+      if (action === 'open-external') { const url = itemURL('external'); url ? openEntryURL(url) : showToast('没有外网入口'); }
+      if (action === 'open-internal') { const url = itemURL('internal'); url ? openEntryURL(url) : showToast('没有内网入口'); }
       if (action === 'copy-external') copyText(itemURL('external'));
       if (action === 'copy-internal') copyText(itemURL('internal'));
       if (action === 'edit') openEdit(activeItem);
