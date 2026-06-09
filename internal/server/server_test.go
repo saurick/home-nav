@@ -101,6 +101,28 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 	}
 }
 
+func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "<title>个人服务导航</title>") {
+		t.Fatal("index should keep the configured browser title")
+	}
+	if strings.Contains(body, "<h1>个人服务导航</h1>") {
+		t.Fatal("index should not render the configured title as visible heading")
+	}
+}
+
 func TestIndexIncludesDragSortControls(t *testing.T) {
 	srv, err := New("../../config.example.yaml")
 	if err != nil {

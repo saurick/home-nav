@@ -1059,7 +1059,6 @@ const indexTemplate = `<!doctype html>
 	    .tool-button iconify-icon { font-size: 22px; }
     .hero { display: grid; justify-items: center; gap: 22px; margin-bottom: 52px; }
     .title-row { display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap; }
-    h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .95; letter-spacing: 0; font-weight: 800; }
     .clock { display: grid; gap: 4px; padding-bottom: 6px; }
     .clock-time { font-size: clamp(24px, 3vw, 36px); line-height: 1; font-weight: 800; }
     .clock-date { color: var(--muted); font-size: 16px; }
@@ -1187,7 +1186,6 @@ const indexTemplate = `<!doctype html>
       .top-tools { top: 12px; right: 12px; }
       .hero { margin-bottom: 34px; align-items: start; justify-items: stretch; }
       .title-row { justify-content: flex-start; align-items: flex-start; }
-      h1 { font-size: 44px; }
       .clock { padding-bottom: 0; }
       .group-title { align-items: flex-start; }
       .group-actions { padding-top: 2px; }
@@ -1228,7 +1226,6 @@ const indexTemplate = `<!doctype html>
   <main class="shell">
     <section class="hero">
       <div class="title-row">
-        <h1>{{.Title}}</h1>
         <div class="clock"><div class="clock-time" id="clock-time">--:--:--</div><div class="clock-date" id="clock-date">--</div></div>
       </div>
       <div class="search-wrap"><iconify-icon icon="mdi:magnify"></iconify-icon><input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"></div>
