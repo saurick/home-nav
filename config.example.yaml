@@ -1,4 +1,4 @@
-title: 个人服务导航
+title: Home
 subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 

@@ -141,7 +141,7 @@ func LoadConfig(path string) (*Config, error) {
 func (c *Config) NormalizeAndValidate() error {
 	c.Title = strings.TrimSpace(c.Title)
 	if c.Title == "" {
-		c.Title = "个人服务导航"
+		c.Title = "Home"
 	}
 	c.Subtitle = strings.TrimSpace(c.Subtitle)
 	if c.CheckInterval == 0 {

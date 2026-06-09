@@ -119,10 +119,10 @@ func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "<title>个人服务导航</title>") {
+	if !strings.Contains(body, "<title>Home</title>") {
 		t.Fatal("index should keep the configured browser title")
 	}
-	if strings.Contains(body, "<h1>个人服务导航</h1>") {
+	if strings.Contains(body, "<h1>Home</h1>") {
 		t.Fatal("index should not render the configured title as visible heading")
 	}
 }
@@ -454,7 +454,7 @@ func TestLoginDoesNotRenderVisibleTitle(t *testing.T) {
 	if !strings.Contains(body, "<title>登录 - 测试导航</title>") {
 		t.Fatal("login should keep the configured browser title")
 	}
-	for _, unwanted := range []string{"<h1>测试导航</h1>", "请登录后查看个人服务导航。", "请登录后查看。"} {
+	for _, unwanted := range []string{"<h1>测试导航</h1>", "请登录后查看。"} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("login should not contain visible title text %q", unwanted)
 		}
