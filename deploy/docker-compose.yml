@@ -6,7 +6,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ../config.example.yaml:/app/services.yaml
+      # 先在仓库根目录执行：cp config.example.yaml services.yaml
+      # 首次设置和页面编辑都需要写回这个运行配置。
+      - ../services.yaml:/app/services.yaml
       # 如果 services.yaml 里配置了 assets.uploads_dir: /app/uploads，可挂载上传图标目录。
       # 编辑页上传图片需要读写挂载。
       # - ./uploads:/app/uploads

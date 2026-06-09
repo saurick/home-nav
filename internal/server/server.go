@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -23,6 +24,7 @@ type Server struct {
 	statuses   *StatusCache
 	indexTpl   *template.Template
 	loginTpl   *template.Template
+	setupTpl   *template.Template
 	mux        *http.ServeMux
 	iconMu     sync.RWMutex
 	iconHTML   map[string]template.HTML
@@ -42,6 +44,12 @@ type LoginData struct {
 	Title    string
 	Error    string
 	ReturnTo string
+}
+
+type SetupData struct {
+	Title   string
+	Error   string
+	Allowed bool
 }
 
 type ServiceUpdateRequest struct {
@@ -115,8 +123,13 @@ func New(configPath string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	setupTpl, err := template.New("setup").Funcs(funcs).Parse(setupTemplate)
+	if err != nil {
+		return nil, err
+	}
 	s.indexTpl = indexTpl
 	s.loginTpl = loginTpl
+	s.setupTpl = setupTpl
 
 	s.routes()
 	s.statuses.Start(context.Background(), cfg.CheckInterval)
@@ -132,6 +145,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealthz)
 	s.mux.HandleFunc("/favicon.svg", handleFavicon)
 	s.mux.HandleFunc("/favicon.ico", handleFavicon)
+	s.mux.HandleFunc("/setup", s.handleSetup)
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
@@ -492,6 +506,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if s.setupRequired() {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
 	if !s.authenticated(r) {
 		redirectToLogin(w, r)
 		return
@@ -510,7 +528,53 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	if !s.setupRequired() {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	allowed := setupAllowedFromRequest(r)
+	cfg := s.currentConfig()
+	switch r.Method {
+	case http.MethodGet:
+		s.renderSetup(w, SetupData{Title: cfg.Title, Allowed: allowed})
+	case http.MethodPost:
+		if !allowed {
+			s.renderSetup(w, SetupData{Title: cfg.Title, Error: "当前访问来源不是局域网或本机，不能执行首次设置。请先通过局域网地址访问，或在配置文件里手动设置管理员密码。", Allowed: false})
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			s.renderSetup(w, SetupData{Title: cfg.Title, Error: "设置请求无效", Allowed: allowed})
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+		confirmPassword := r.FormValue("confirm_password")
+		nextCfg, err := s.initializeAuth(username, password, confirmPassword)
+		if err != nil {
+			s.renderSetup(w, SetupData{Title: cfg.Title, Error: err.Error(), Allowed: allowed})
+			return
+		}
+		if err := SaveConfig(s.configPath, nextCfg); err != nil {
+			s.renderSetup(w, SetupData{Title: cfg.Title, Error: err.Error(), Allowed: allowed})
+			return
+		}
+		s.mu.Lock()
+		s.cfg = nextCfg
+		s.mu.Unlock()
+		s.setSessionCookie(w, r, nextCfg.Auth.Username)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if s.setupRequired() {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
 	if !s.authEnabled() {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -558,6 +622,11 @@ func (s *Server) renderLogin(w http.ResponseWriter, data LoginData) {
 	_ = s.loginTpl.Execute(w, data)
 }
 
+func (s *Server) renderSetup(w http.ResponseWriter, data SetupData) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.setupTpl.Execute(w, data)
+}
+
 func redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	target := "/login"
 	if r.URL.RequestURI() != "/" {
@@ -577,6 +646,41 @@ func (s *Server) currentConfig() *Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.cfg
+}
+
+func setupAllowedFromRequest(r *http.Request) bool {
+	ip := setupClientIP(r)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+func setupClientIP(r *http.Request) net.IP {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	remoteIP := net.ParseIP(strings.TrimSpace(host))
+	if remoteIP == nil {
+		return nil
+	}
+	if remoteIP.IsLoopback() || remoteIP.IsPrivate() {
+		if forwarded := firstForwardedIP(r); forwarded != nil {
+			return forwarded
+		}
+	}
+	return remoteIP
+}
+
+func firstForwardedIP(r *http.Request) net.IP {
+	for _, raw := range []string{r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Real-IP")} {
+		if raw == "" {
+			continue
+		}
+		first, _, _ := strings.Cut(raw, ",")
+		if ip := net.ParseIP(strings.TrimSpace(first)); ip != nil {
+			return ip
+		}
+	}
+	return nil
 }
 
 func (s *Server) createGroup(payload GroupUpdateRequest) (*Config, Group, error) {
@@ -632,6 +736,40 @@ func (s *Server) deleteGroup(id string) (*Config, error) {
 		return nil, fmt.Errorf("分组下还有入口，请先移动或删除入口")
 	}
 	cfg.Groups = append(cfg.Groups[:groupIndex], cfg.Groups[groupIndex+1:]...)
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func (s *Server) initializeAuth(username, password, confirmPassword string) (*Config, error) {
+	if username == "" {
+		return nil, fmt.Errorf("账号不能为空")
+	}
+	if len(password) < 8 {
+		return nil, fmt.Errorf("密码至少需要 8 位")
+	}
+	if password != confirmPassword {
+		return nil, fmt.Errorf("两次输入的密码不一致")
+	}
+	secret, err := randomSessionSecret()
+	if err != nil {
+		return nil, fmt.Errorf("生成 session secret 失败: %w", err)
+	}
+
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+	if !configNeedsSetup(cfg) {
+		return nil, fmt.Errorf("首次设置已完成")
+	}
+	cfg.Auth.Enabled = true
+	cfg.Auth.Username = username
+	cfg.Auth.Password = password
+	cfg.Auth.SessionSecret = secret
+	if cfg.Auth.SessionTTL == 0 {
+		cfg.Auth.SessionTTL = 24 * time.Hour
+	}
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		return nil, err
 	}
@@ -1077,6 +1215,8 @@ var templateIconNames = []string{
 	"mdi:wallpaper",
 	"mdi:arrow-up",
 	"mdi:arrow-down",
+	"mdi:eye",
+	"mdi:eye-off",
 }
 
 var fallbackIconText = map[string]string{
@@ -1101,6 +1241,8 @@ var fallbackIconText = map[string]string{
 	"mdi:wallpaper":                    "▥",
 	"mdi:arrow-up":                     "↑",
 	"mdi:arrow-down":                   "↓",
+	"mdi:eye":                          "◉",
+	"mdi:eye-off":                      "◎",
 }
 
 func (s *Server) inlineIconJSON(icon string) template.JS {
@@ -1251,15 +1393,6 @@ const indexTemplate = `<!doctype html>
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button .inline-icon { font-size: 22px; }
-    .hero { display: grid; justify-items: center; gap: 22px; margin-bottom: 52px; }
-    .title-row { display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap; }
-    .clock { display: grid; gap: 4px; padding-bottom: 6px; }
-    .clock-time { font-size: clamp(24px, 3vw, 36px); line-height: 1; font-weight: 800; }
-    .clock-date { color: var(--muted); font-size: 16px; }
-    .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid rgba(255,255,255,.58); border-radius: 18px; background: rgba(10,10,12,.18); display: grid; grid-template-columns: 42px 1fr; align-items: center; padding: 0 14px; backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); }
-    .search-wrap .inline-icon { color: #fff; font-size: 24px; }
-    .search { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 18px; }
-    .search::placeholder { color: #9ea4b0; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1296,7 +1429,7 @@ const indexTemplate = `<!doctype html>
     .app-name { width: 92px; min-height: 38px; text-align: center; color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; text-shadow: 0 2px 10px rgba(0,0,0,.50); }
     .empty { display: none; color: var(--muted); padding: 22px 0; }
     body.is-empty .empty { display: block; }
-    .group.is-hidden, .app-icon.is-hidden { display: none; }
+    .group.is-hidden { display: none; }
     .menu { position: fixed; z-index: 50; min-width: 292px; border-radius: 6px; background: #53535d; box-shadow: 0 18px 48px rgba(0,0,0,.45); padding: 20px 0 10px; display: none; }
     .menu.is-open { display: block; }
     .menu-section { padding: 0 24px 16px; }
@@ -1403,12 +1536,8 @@ const indexTemplate = `<!doctype html>
     @media (max-width: 760px) {
       .shell { width: min(100vw - 24px, 1240px); padding-top: 92px; }
       .top-tools { top: 12px; right: 12px; }
-      .hero { margin-bottom: 34px; align-items: start; justify-items: stretch; }
-      .title-row { justify-content: flex-start; align-items: flex-start; }
-      .clock { padding-bottom: 0; }
       .group-title { align-items: flex-start; }
       .group-actions { padding-top: 2px; }
-      .search-wrap { border-radius: 14px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
       .icon-button .inline-icon { font-size: 36px; }
@@ -1449,13 +1578,6 @@ const indexTemplate = `<!doctype html>
     {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录">{{icon "mdi:logout"}}</button></form>{{end}}
   </div>
   <main class="shell">
-    <section class="hero">
-      <div class="title-row">
-        <div class="clock"><div class="clock-time" id="clock-time">--:--:--</div><div class="clock-date" id="clock-date">--</div></div>
-      </div>
-      <div class="search-wrap">{{icon "mdi:magnify"}}<input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"></div>
-    </section>
-
     <section class="groups">
       {{range .Groups}}
       <section class="group" data-group-id="{{.ID}}">
@@ -1469,7 +1591,7 @@ const indexTemplate = `<!doctype html>
         </div>
         <div class="icon-grid">
           {{range .Services}}
-          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
+          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
             <a class="icon-button" href="{{.DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
               {{serviceIcon .}}
               <span class="health-dot" data-status="unknown"></span>
@@ -1481,7 +1603,7 @@ const indexTemplate = `<!doctype html>
       </section>
       {{end}}
     </section>
-    <p class="empty">没有匹配的服务入口。</p>
+    <p class="empty">暂无服务入口。</p>
   </main>
 
   <div class="menu" id="item-menu" role="menu" aria-hidden="true">
@@ -1589,7 +1711,6 @@ const indexTemplate = `<!doctype html>
   <div class="toast" id="toast"></div>
 
   <script>
-    const searchInput = document.querySelector('#search');
     const items = [...document.querySelectorAll('.app-icon')];
     const groups = [...document.querySelectorAll('.group')];
     const menu = document.querySelector('#item-menu');
@@ -1648,12 +1769,6 @@ const indexTemplate = `<!doctype html>
 	    function field(name) { return form.elements.namedItem(name); }
 	    function settingField(name) { return settingsForm.elements.namedItem(name); }
 	    function groupField(name) { return groupForm.elements.namedItem(name); }
-	    function updateClock() {
-      const now = new Date();
-      document.querySelector('#clock-time').textContent = now.toLocaleTimeString('en-GB', { hour12: false });
-      document.querySelector('#clock-date').textContent = now.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', weekday: 'long' });
-    }
-    function normalize(value) { return (value || '').trim().toLowerCase(); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
     function preferredURL(item, mode) {
@@ -1697,20 +1812,15 @@ const indexTemplate = `<!doctype html>
       if (icon.includes(':')) return '<img src="' + escapeHTML(onlineIconSrc(icon)) + '" alt="">';
       return '<span class="icon-fallback">' + escapeHTML(text) + '</span>';
     }
-    function applyFilters() {
-      const keyword = normalize(searchInput.value);
+    function updateGroupCounts() {
       let visibleTotal = 0;
-      for (const item of items) {
-        const visible = !keyword || normalize(item.dataset.search).includes(keyword);
-        item.classList.toggle('is-hidden', !visible);
-        if (visible) visibleTotal += 1;
-      }
 	      for (const group of groups) {
 	        const totalCount = group.querySelectorAll('.app-icon').length;
-	        const visibleCount = group.querySelectorAll('.app-icon:not(.is-hidden)').length;
+	        const visibleCount = totalCount;
 	        group.classList.toggle('is-hidden', visibleCount === 0);
 	        group.querySelector('.group-visible-count').textContent = String(visibleCount);
 	        group.querySelector('.group-total-count').textContent = String(totalCount);
+	        visibleTotal += visibleCount;
 	      }
       document.body.classList.toggle('is-empty', visibleTotal === 0);
     }
@@ -2392,11 +2502,6 @@ const indexTemplate = `<!doctype html>
 	      animateGridMove(() => targetGrid.append(dragState.placeholder));
 	    }
 	    function beginDrag(state) {
-	      if (normalize(searchInput.value)) {
-	        suppressEditClickOnce();
-	        showToast('清空搜索后再排序');
-	        return false;
-	      }
 	      const rect = state.item.getBoundingClientRect();
 	      state.offsetX = state.startX - rect.left;
 	      state.offsetY = state.startY - rect.top;
@@ -2434,7 +2539,7 @@ const indexTemplate = `<!doctype html>
 	          setSortDirty(true);
 	          saveSort();
 	        }
-	        applyFilters();
+	        updateGroupCounts();
 	      }
 	    }
 	    function placeDraggedItem(clientX, clientY) {
@@ -2444,7 +2549,7 @@ const indexTemplate = `<!doctype html>
 	      const targetItem = target.closest('.app-icon:not(.is-dragging)');
 	      const targetGrid = targetItem?.closest('.icon-grid') || target.closest('.icon-grid');
 	      if (!targetGrid) return;
-	      const items = [...targetGrid.querySelectorAll('.app-icon:not(.is-dragging):not(.is-hidden)')];
+	      const items = [...targetGrid.querySelectorAll('.app-icon:not(.is-dragging)')];
 	      if (!items.length) {
 	        appendPlaceholderTo(targetGrid);
 	        return;
@@ -2656,10 +2761,8 @@ const indexTemplate = `<!doctype html>
     uploadBackgroundFile.addEventListener('change', () => uploadBackground(uploadBackgroundFile.files?.[0]));
     galleryUploadButton.addEventListener('click', () => galleryUploadFile.click());
     galleryUploadFile.addEventListener('change', () => uploadGalleryAsset(galleryUploadFile.files?.[0]));
-    searchInput.addEventListener('input', applyFilters);
-    updateClock(); setInterval(updateClock, 1000);
     setAccessMode(savedAccessMode(), false);
-    applyFilters(); refreshStatus(); setInterval(refreshStatus, 30000);
+    updateGroupCounts(); refreshStatus(); setInterval(refreshStatus, 30000);
   </script>
 </body>
 </html>`
@@ -2669,6 +2772,177 @@ const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <path d="M17 20h30v24H17z" fill="none" stroke="#f7f7f7" stroke-width="5" stroke-linejoin="round"/>
   <path d="M24 27h4v10h-4zm8 0h4v10h-4zm8 0h4v10h-4z" fill="#67e0b6"/>
 </svg>`
+
+const setupTemplate = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>首次设置 - {{.Title}}</title>
+  <style>
+    :root {
+      --bg: #050505;
+      --surface: rgba(24,24,27,.82);
+      --field: rgba(255,255,255,.08);
+      --line: rgba(255,255,255,.13);
+      --text: #f7f7f8;
+      --muted: #b9bac3;
+      --accent: #67e0b6;
+      --accent-strong: #8ff0cd;
+      --bad: #ff8b8b;
+    }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 32px 18px;
+      background: linear-gradient(135deg, #050505, #17171b 54%, #050505);
+    }
+    main {
+      width: min(430px, 100%);
+      display: grid;
+      gap: 18px;
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      text-align: center;
+    }
+    form, .blocked {
+      display: grid;
+      gap: 16px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 0 14px;
+      color: var(--text);
+      background: var(--field);
+      font-size: 15px;
+      outline: none;
+    }
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(103, 224, 182, .15);
+    }
+    .password-field {
+      position: relative;
+      display: grid;
+    }
+    .password-field input {
+      padding-right: 52px;
+    }
+    button {
+      min-height: 48px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--accent);
+      color: #050505;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button:hover { background: var(--accent-strong); }
+    .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
+    .inline-icon svg { display: block; width: 1em; height: 1em; }
+    .inline-icon-fallback { font-weight: 900; }
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      width: 38px;
+      height: 38px;
+      min-height: 0;
+      transform: translateY(-50%);
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      padding: 0;
+      cursor: pointer;
+    }
+    .password-toggle:hover {
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+    }
+    .password-toggle .inline-icon { font-size: 22px; }
+    .error {
+      margin: 0;
+      color: var(--bad);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    @media (max-width: 760px) {
+      body { align-items: start; padding-top: 96px; }
+      form, .blocked { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="subtitle">首次使用，请设置管理员账号。</p>
+    {{if .Allowed}}
+    <form method="post" action="/setup">
+      {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+      <label>账号
+        <input name="username" type="text" autocomplete="username" value="admin" autofocus required>
+      </label>
+      <label>密码
+        <span class="password-field">
+          <input id="setup-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+          <button class="password-toggle" type="button" data-password-toggle data-target="setup-password" aria-label="显示密码" title="显示密码">{{icon "mdi:eye"}}</button>
+        </span>
+      </label>
+      <label>确认密码
+        <span class="password-field">
+          <input id="setup-confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
+          <button class="password-toggle" type="button" data-password-toggle data-target="setup-confirm-password" aria-label="显示密码" title="显示密码">{{icon "mdi:eye"}}</button>
+        </span>
+      </label>
+      <button type="submit">完成设置</button>
+    </form>
+    {{else}}
+    <section class="blocked">
+      {{if .Error}}<p class="error">{{.Error}}</p>{{else}}<p class="error">当前访问来源不是局域网或本机，不能执行首次设置。请先通过局域网地址访问，或在配置文件里手动设置管理员密码。</p>{{end}}
+    </section>
+    {{end}}
+  </main>
+  <script>
+    const passwordHiddenIcon = {{iconJSON "mdi:eye"}};
+    const passwordVisibleIcon = {{iconJSON "mdi:eye-off"}};
+    for (const button of document.querySelectorAll('[data-password-toggle]')) {
+      const input = document.getElementById(button.dataset.target);
+      if (!input) continue;
+      button.addEventListener('click', () => {
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        const label = visible ? '隐藏密码' : '显示密码';
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.innerHTML = visible ? passwordVisibleIcon : passwordHiddenIcon;
+      });
+    }
+  </script>
+</body>
+</html>`
 
 const loginTemplate = `<!doctype html>
 <html lang="zh-CN">
@@ -2756,6 +3030,13 @@ const loginTemplate = `<!doctype html>
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(103, 224, 182, .15);
     }
+    .password-field {
+      position: relative;
+      display: grid;
+    }
+    .password-field input {
+      padding-right: 52px;
+    }
     button {
       min-height: 48px;
       border: 1px solid var(--accent);
@@ -2767,6 +3048,28 @@ const loginTemplate = `<!doctype html>
       font-weight: 700;
     }
     button:hover { background: var(--accent-strong); }
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      width: 38px;
+      height: 38px;
+      min-height: 0;
+      transform: translateY(-50%);
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      padding: 0;
+      cursor: pointer;
+    }
+    .password-toggle:hover {
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+    }
+    .password-toggle .inline-icon { font-size: 22px; }
     .error {
       margin: 0;
       color: var(--bad);
@@ -2785,16 +3088,16 @@ const loginTemplate = `<!doctype html>
     <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><span id="access-mode-icon">{{icon "mdi:web"}}</span></button>
   </div>
   <main>
-    <div>
-      <p class="subtitle">请登录后查看。</p>
-    </div>
     <form method="post" action="/login?return_to={{.ReturnTo}}">
       {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
       <label>账号
         <input name="username" type="text" autocomplete="username" autofocus required>
       </label>
       <label>密码
-        <input name="password" type="password" autocomplete="current-password" required>
+        <span class="password-field">
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-password-toggle data-target="login-password" aria-label="显示密码" title="显示密码">{{icon "mdi:eye"}}</button>
+        </span>
       </label>
       <button type="submit">登录</button>
     </form>
@@ -2803,6 +3106,8 @@ const loginTemplate = `<!doctype html>
     const accessModeKey = 'home-nav.access-mode';
     const accessModeButton = document.querySelector('#access-mode-button');
     const accessModeIcon = document.querySelector('#access-mode-icon');
+    const passwordHiddenIcon = {{iconJSON "mdi:eye"}};
+    const passwordVisibleIcon = {{iconJSON "mdi:eye-off"}};
     function savedAccessMode() {
       try {
         return localStorage.getItem(accessModeKey) === 'internal' ? 'internal' : 'external';
@@ -2816,6 +3121,18 @@ const loginTemplate = `<!doctype html>
       accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
       accessModeIcon.innerHTML = accessMode === 'internal' ? {{iconJSON "mdi:lan"}} : {{iconJSON "mdi:web"}};
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
+    }
+    for (const button of document.querySelectorAll('[data-password-toggle]')) {
+      const input = document.getElementById(button.dataset.target);
+      if (!input) continue;
+      button.addEventListener('click', () => {
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        const label = visible ? '隐藏密码' : '显示密码';
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.innerHTML = visible ? passwordVisibleIcon : passwordHiddenIcon;
+      });
     }
     accessModeButton.addEventListener('click', () => setAccessMode(document.body.dataset.accessMode === 'internal' ? 'external' : 'internal'));
     setAccessMode(savedAccessMode());

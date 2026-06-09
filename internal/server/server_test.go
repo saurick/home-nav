@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,7 +59,7 @@ func TestFavicon(t *testing.T) {
 }
 
 func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
 }
 
 func TestIndexIncludesAccessModeToggle(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 }
 
 func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -126,8 +127,29 @@ func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
 	}
 }
 
+func TestIndexDoesNotRenderClockOrSearch(t *testing.T) {
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, unwanted := range []string{"id=\"search\"", "class=\"search-wrap\"", "clock-time", "clock-date", "搜索服务、描述或标签", "updateClock", "home-nav.search"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("index should not contain clock or search UI marker %q", unwanted)
+		}
+	}
+}
+
 func TestIndexIncludesDragSortControls(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -154,7 +176,7 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 }
 
 func TestIndexIncludesGroupManagementControls(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -175,7 +197,7 @@ func TestIndexIncludesGroupManagementControls(t *testing.T) {
 }
 
 func TestIndexIncludesGalleryControls(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -196,7 +218,7 @@ func TestIndexIncludesGalleryControls(t *testing.T) {
 }
 
 func TestIndexIncludesAdaptiveBackgroundControls(t *testing.T) {
-	srv, err := New("../../config.example.yaml")
+	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -243,6 +265,146 @@ func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	}
 }
 
+func TestExampleConfigRedirectsToSetup(t *testing.T) {
+	srv, err := New(writeTempConfig(t, exampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRec := httptest.NewRecorder()
+	srv.ServeHTTP(indexRec, indexReq)
+	if indexRec.Code != http.StatusSeeOther {
+		t.Fatalf("expected index redirect, got %d", indexRec.Code)
+	}
+	if got := indexRec.Header().Get("Location"); got != "/setup" {
+		t.Fatalf("unexpected redirect: %q", got)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	statusRec := httptest.NewRecorder()
+	srv.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected setup to protect api status, got %d", statusRec.Code)
+	}
+}
+
+func TestSetupPageAllowsPrivateSource(t *testing.T) {
+	srv, err := New(writeTempConfig(t, exampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/setup", nil)
+	req.RemoteAddr = "192.168.1.23:45678"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"首次使用，请设置管理员账号。",
+		"id=\"setup-password\"",
+		"id=\"setup-confirm-password\"",
+		"data-target=\"setup-password\"",
+		"data-target=\"setup-confirm-password\"",
+		"data-password-toggle",
+		"完成设置",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected setup page to contain %q", want)
+		}
+	}
+}
+
+func TestSetupPageBlocksPublicSource(t *testing.T) {
+	srv, err := New(writeTempConfig(t, exampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/setup", nil)
+	req.RemoteAddr = "203.0.113.10:45678"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "当前访问来源不是局域网或本机") {
+		t.Fatalf("expected setup block message, got %q", body)
+	}
+	if strings.Contains(body, "name=\"password\"") {
+		t.Fatal("public setup page should not render password form")
+	}
+}
+
+func TestSetupPageBlocksPublicForwardedSource(t *testing.T) {
+	srv, err := New(writeTempConfig(t, exampleConfig(t)))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/setup", nil)
+	req.RemoteAddr = "127.0.0.1:45678"
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "当前访问来源不是局域网或本机") {
+		t.Fatalf("expected setup block message, got %q", body)
+	}
+	if strings.Contains(body, "name=\"password\"") {
+		t.Fatal("public forwarded setup page should not render password form")
+	}
+}
+
+func TestSetupInitializesAuth(t *testing.T) {
+	configPath := writeTempConfig(t, exampleConfig(t))
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("username", "owner")
+	form.Set("password", "new-password")
+	form.Set("confirm_password", "new-password")
+	req := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "10.0.0.8:45678"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected setup redirect, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/" {
+		t.Fatalf("unexpected redirect: %q", got)
+	}
+	if len(rec.Result().Cookies()) == 0 {
+		t.Fatal("setup should create a login session")
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload: %v", err)
+	}
+	if !cfg.Auth.Enabled || cfg.Auth.Username != "owner" || cfg.Auth.Password != "new-password" {
+		t.Fatalf("auth was not initialized: %#v", cfg.Auth)
+	}
+	if cfg.Auth.SessionSecret == defaultAuthSessionSecret || len(cfg.Auth.SessionSecret) < 32 {
+		t.Fatalf("session secret was not regenerated: %q", cfg.Auth.SessionSecret)
+	}
+}
+
 func TestLoginIncludesAccessModeToggle(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
@@ -257,7 +419,15 @@ func TestLoginIncludesAccessModeToggle(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-button\"", "home-nav.access-mode", "class=\"inline-icon"} {
+	for _, want := range []string{
+		"id=\"access-mode-button\"",
+		"home-nav.access-mode",
+		"id=\"login-password\"",
+		"data-target=\"login-password\"",
+		"data-password-toggle",
+		"aria-label=\"显示密码\"",
+		"class=\"inline-icon",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected login to contain %q", want)
 		}
@@ -284,13 +454,10 @@ func TestLoginDoesNotRenderVisibleTitle(t *testing.T) {
 	if !strings.Contains(body, "<title>登录 - 测试导航</title>") {
 		t.Fatal("login should keep the configured browser title")
 	}
-	for _, unwanted := range []string{"<h1>测试导航</h1>", "请登录后查看个人服务导航。"} {
+	for _, unwanted := range []string{"<h1>测试导航</h1>", "请登录后查看个人服务导航。", "请登录后查看。"} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("login should not contain visible title text %q", unwanted)
 		}
-	}
-	if !strings.Contains(body, "请登录后查看。") {
-		t.Fatal("login should keep a generic prompt")
 	}
 }
 
@@ -1068,6 +1235,23 @@ func writeTempConfig(t *testing.T, content string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
+}
+
+func exampleConfig(t *testing.T) string {
+	t.Helper()
+	content, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("read example config: %v", err)
+	}
+	return string(content)
+}
+
+func publicExampleConfig(t *testing.T) string {
+	t.Helper()
+	content := exampleConfig(t)
+	content = strings.ReplaceAll(content, "password: change-me", "password: configured-public-mode")
+	content = strings.ReplaceAll(content, "session_secret: change-this-to-at-least-32-random-characters", "session_secret: configured-public-mode-secret")
+	return content
 }
 
 func writePNG(t *testing.T, path string, width, height int) {

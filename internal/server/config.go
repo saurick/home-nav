@@ -302,8 +302,14 @@ func normalizeAuth(auth *AuthConfig) error {
 	if auth.Password == "" {
 		return fmt.Errorf("配置错误: auth.password 不能为空")
 	}
+	if auth.Password == defaultAuthPassword {
+		return fmt.Errorf("配置错误: auth.password 不能使用示例默认值")
+	}
 	if len(auth.SessionSecret) < 32 {
 		return fmt.Errorf("配置错误: auth.session_secret 至少需要 32 个字符")
+	}
+	if auth.SessionSecret == defaultAuthSessionSecret {
+		return fmt.Errorf("配置错误: auth.session_secret 不能使用示例默认值")
 	}
 	return nil
 }

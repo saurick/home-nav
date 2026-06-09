@@ -6,7 +6,7 @@
 
 - 从配置文件读取服务分组和入口。
 - 展示内网 / 外网访问链接。
-- 支持搜索、标签筛选和只读健康状态。
+- 展示服务标签和只读健康状态。
 - 使用 Go 单二进制部署，减少运行时依赖。
 - 使用 YAML 配置作为唯一真源。
 - 可选单用户登录保护，不引入数据库或账号系统。
@@ -23,7 +23,8 @@
 ## 本地运行
 
 ```bash
-go run ./cmd/home-nav -config config.example.yaml
+cp config.example.yaml services.yaml
+go run ./cmd/home-nav -config services.yaml
 ```
 
 默认监听：
@@ -36,14 +37,16 @@ http://127.0.0.1:8080
 
 ```bash
 curl http://127.0.0.1:8080/healthz
-curl http://127.0.0.1:8080/api/status
 ```
+
+`/api/status` 在完成首次设置或关闭登录保护后可访问；启用登录时需要带登录 session。
 
 ## Docker
 
 ```bash
 docker build -t home-nav:local .
-docker run --rm -p 8080:8080 -v "$PWD/config.example.yaml:/app/services.yaml:ro" home-nav:local
+cp config.example.yaml services.yaml
+docker run --rm -p 8080:8080 -v "$PWD/services.yaml:/app/services.yaml" home-nav:local
 ```
 
 或使用 compose：
@@ -65,8 +68,12 @@ docker compose -f deploy/docker-compose.yml up -d
 - 健康检查支持 `disabled`、`http` 和 `tcp`。
 - 后端按 `check_interval` 定时刷新状态缓存，页面和 `/api/status` 不会实时探测每个服务。
 - 配置解析会拒绝未知字段、重复 ID、非法 URL 和缺失健康检查参数。
+- 如果配置里的 `auth.enabled: false`、`auth.username: admin`、`auth.password: change-me`、`auth.session_secret: change-this-to-at-least-32-random-characters` 仍然保持示例值，首次打开首页会进入 `/setup`。
+- `/setup` 只允许从本机或局域网来源访问时完成首次设置；如果从公网访问未初始化实例，页面会拒绝设置并提示改用局域网地址或手动配置密码。
+- 如果前面有 Nginx、Caddy 等反向代理，应传递真实客户端 IP（例如 `X-Forwarded-For` 或 `X-Real-IP`），否则服务端只能看到代理到 Go 进程的来源地址。
+- 首次设置会写回 `services.yaml`，启用登录并生成随机 `auth.session_secret`。运行配置必须可写，Docker 挂载时不要使用只读挂载。
 - `auth.enabled` 为 `true` 时，首页和 `/api/status` 需要登录，`/healthz` 仍保持公开。
-- 真实 `auth.password` 和 `auth.session_secret` 只应放在私有运行配置里，不要提交到仓库。
+- `auth.enabled` 为 `true` 时不能继续使用示例默认密码或示例 `session_secret`；真实 `auth.password` 和 `auth.session_secret` 只应放在私有运行配置里，不要提交到仓库。
 - 页面支持新增、编辑、删除入口并写回 YAML；如果用 Docker 挂载配置文件，`/app/services.yaml` 需要读写挂载。只读挂载可以浏览，但保存变更会失败。
 - 页面里的删除只删除导航入口，不会删除、停止或重启真实服务。
 - 页面支持编辑模式；编辑模式开启后可以拖拽图标调整排序，松手后会自动写回 YAML，右上角保存按钮可用于保存未完成的排序变更。未拖拽时左键点击图标进入编辑，关闭编辑模式后左键仍然直接跳转。

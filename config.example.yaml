@@ -3,6 +3,8 @@ subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 
 auth:
+  # 保持下面的示例账号、密码和 session_secret 时，首次打开会进入 /setup。
+  # 真实运行配置请使用私有 services.yaml，不要提交真实密码。
   enabled: false
   username: admin
   password: change-me

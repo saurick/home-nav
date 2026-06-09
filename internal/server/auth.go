@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -14,12 +15,32 @@ import (
 
 const sessionCookieName = "home_nav_session"
 
+const (
+	defaultAuthUsername      = "admin"
+	defaultAuthPassword      = "change-me"
+	defaultAuthSessionSecret = "change-this-to-at-least-32-random-characters"
+)
+
 func (s *Server) authEnabled() bool {
 	return s.currentConfig().Auth.Enabled
 }
 
+func (s *Server) setupRequired() bool {
+	return configNeedsSetup(s.currentConfig())
+}
+
+func configNeedsSetup(cfg *Config) bool {
+	return !cfg.Auth.Enabled &&
+		cfg.Auth.Username == defaultAuthUsername &&
+		cfg.Auth.Password == defaultAuthPassword &&
+		cfg.Auth.SessionSecret == defaultAuthSessionSecret
+}
+
 func (s *Server) authenticated(r *http.Request) bool {
 	cfg := s.currentConfig()
+	if configNeedsSetup(cfg) {
+		return false
+	}
 	if !cfg.Auth.Enabled {
 		return true
 	}
@@ -87,6 +108,14 @@ func constantTimeEqual(a, b string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func randomSessionSecret() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, username string) {
