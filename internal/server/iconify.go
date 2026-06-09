@@ -39,7 +39,7 @@ func (s *Server) handleIconifyIcon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Cache-Control", "private, max-age=604800")
 	if r.Method == http.MethodHead {
 		return
 	}
@@ -69,13 +69,12 @@ func parseIconifyPath(path string) (string, string, bool) {
 
 func loadIconifySVG(ctx context.Context, cacheDir, collection, iconName string) ([]byte, error) {
 	if cacheDir != "" {
-		path := iconifyCachePath(cacheDir, collection, iconName)
-		body, err := os.ReadFile(path)
-		if err == nil {
-			return body, nil
-		}
-		if !os.IsNotExist(err) {
+		body, ok, err := loadCachedIconifySVG(cacheDir, collection, iconName)
+		if err != nil {
 			return nil, err
+		}
+		if ok {
+			return body, nil
 		}
 	}
 
@@ -109,6 +108,21 @@ func loadIconifySVG(ctx context.Context, cacheDir, collection, iconName string) 
 		}
 	}
 	return body, nil
+}
+
+func loadCachedIconifySVG(cacheDir, collection, iconName string) ([]byte, bool, error) {
+	if cacheDir == "" {
+		return nil, false, nil
+	}
+	path := iconifyCachePath(cacheDir, collection, iconName)
+	body, err := os.ReadFile(path)
+	if err == nil {
+		return body, true, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	return nil, false, err
 }
 
 func iconifyCachePath(cacheDir, collection, iconName string) string {

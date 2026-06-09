@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ type Server struct {
 	indexTpl   *template.Template
 	loginTpl   *template.Template
 	mux        *http.ServeMux
+	iconMu     sync.RWMutex
+	iconHTML   map[string]template.HTML
 }
 
 type PageData struct {
@@ -91,25 +94,33 @@ func New(configPath string) (*Server, error) {
 		return nil, err
 	}
 
-	indexTpl, err := template.New("index").Parse(indexTemplate)
-	if err != nil {
-		return nil, err
-	}
-	loginTpl, err := template.New("login").Parse(loginTemplate)
-	if err != nil {
-		return nil, err
-	}
-
 	s := &Server{
 		configPath: configPath,
 		cfg:        cfg,
 		statuses:   NewStatusCache(cfg),
-		indexTpl:   indexTpl,
-		loginTpl:   loginTpl,
 		mux:        http.NewServeMux(),
+		iconHTML:   make(map[string]template.HTML),
 	}
+
+	funcs := template.FuncMap{
+		"icon":        s.inlineIconHTML,
+		"iconJSON":    s.inlineIconJSON,
+		"serviceIcon": s.serviceIconHTML,
+	}
+	indexTpl, err := template.New("index").Funcs(funcs).Parse(indexTemplate)
+	if err != nil {
+		return nil, err
+	}
+	loginTpl, err := template.New("login").Funcs(funcs).Parse(loginTemplate)
+	if err != nil {
+		return nil, err
+	}
+	s.indexTpl = indexTpl
+	s.loginTpl = loginTpl
+
 	s.routes()
 	s.statuses.Start(context.Background(), cfg.CheckInterval)
+	go s.prewarmIconCache(cfg)
 	return s, nil
 }
 
@@ -135,7 +146,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/uploads", s.handleUpload)
 	s.mux.HandleFunc("/.iconify/", s.handleIconifyIcon)
 	if s.cfg.Assets.UploadsDir != "" {
-		s.mux.Handle(s.cfg.Assets.UploadsURLPrefix, http.StripPrefix(s.cfg.Assets.UploadsURLPrefix, http.FileServer(http.Dir(s.cfg.Assets.UploadsDir))))
+		uploads := http.StripPrefix(s.cfg.Assets.UploadsURLPrefix, http.FileServer(http.Dir(s.cfg.Assets.UploadsDir)))
+		s.mux.Handle(s.cfg.Assets.UploadsURLPrefix, cacheStatic(uploads))
 	}
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -150,6 +162,13 @@ func handleFavicon(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	_, _ = w.Write([]byte(faviconSVG))
+}
+
+func cacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=604800")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -1036,6 +1055,159 @@ func collectTags(groups []Group) []string {
 	return tags
 }
 
+var templateIconNames = []string{
+	"mdi:web",
+	"mdi:lan",
+	"mdi:content-save-outline",
+	"mdi:folder-cog-outline",
+	"mdi:image-multiple-outline",
+	"mdi:image-edit-outline",
+	"mdi:logout",
+	"mdi:magnify",
+	"mdi:plus",
+	"mdi:cursor-default-click-outline",
+	"mdi:open-in-new",
+	"mdi:link-variant",
+	"mdi:pencil-box-outline",
+	"mdi:trash-can-outline",
+	"mdi:close",
+	"mdi:upload",
+	"mdi:content-copy",
+	"mdi:image-plus-outline",
+	"mdi:wallpaper",
+	"mdi:arrow-up",
+	"mdi:arrow-down",
+}
+
+var fallbackIconText = map[string]string{
+	"mdi:web":                          "◎",
+	"mdi:lan":                          "⌘",
+	"mdi:content-save-outline":         "□",
+	"mdi:folder-cog-outline":           "▣",
+	"mdi:image-multiple-outline":       "▧",
+	"mdi:image-edit-outline":           "✎",
+	"mdi:logout":                       "↪",
+	"mdi:magnify":                      "⌕",
+	"mdi:plus":                         "+",
+	"mdi:cursor-default-click-outline": "✣",
+	"mdi:open-in-new":                  "↗",
+	"mdi:link-variant":                 "⌁",
+	"mdi:pencil-box-outline":           "✎",
+	"mdi:trash-can-outline":            "×",
+	"mdi:close":                        "×",
+	"mdi:upload":                       "↑",
+	"mdi:content-copy":                 "⧉",
+	"mdi:image-plus-outline":           "▧",
+	"mdi:wallpaper":                    "▥",
+	"mdi:arrow-up":                     "↑",
+	"mdi:arrow-down":                   "↓",
+}
+
+func (s *Server) inlineIconJSON(icon string) template.JS {
+	return template.JS(strconv.Quote(string(s.inlineIconHTML(icon))))
+}
+
+func (s *Server) inlineIconHTML(icon string) template.HTML {
+	icon = strings.TrimSpace(icon)
+	if icon == "" {
+		return emptyInlineIconHTML()
+	}
+
+	s.iconMu.RLock()
+	if html, ok := s.iconHTML[icon]; ok {
+		s.iconMu.RUnlock()
+		return html
+	}
+	s.iconMu.RUnlock()
+
+	collection, iconName, ok := strings.Cut(icon, ":")
+	if !ok || !iconifyPartPattern.MatchString(collection) || !iconifyPartPattern.MatchString(iconName) {
+		return emptyInlineIconHTML()
+	}
+	cfg := s.currentConfig()
+	if cfg.Assets.IconCacheDir == "" {
+		return fallbackInlineIconHTML(icon)
+	}
+	body, cached, err := loadCachedIconifySVG(cfg.Assets.IconCacheDir, collection, iconName)
+	if err != nil || !cached {
+		return fallbackInlineIconHTML(icon)
+	}
+	html := inlineSVGHTML(body)
+
+	s.iconMu.Lock()
+	s.iconHTML[icon] = html
+	s.iconMu.Unlock()
+	return html
+}
+
+func (s *Server) serviceIconHTML(service Service) template.HTML {
+	if service.IconIsOnline() {
+		collection, iconName, ok := strings.Cut(service.Icon, ":")
+		if ok && iconifyPartPattern.MatchString(collection) && iconifyPartPattern.MatchString(iconName) {
+			cfg := s.currentConfig()
+			body, cached, err := loadCachedIconifySVG(cfg.Assets.IconCacheDir, collection, iconName)
+			if err == nil && cached {
+				return inlineSVGHTML(body)
+			}
+		}
+		return template.HTML(`<img src="` + template.HTMLEscapeString(service.IconImageSrc()) + `" alt="" loading="lazy" decoding="async">`)
+	}
+	if service.IconIsImage() {
+		return template.HTML(`<img src="` + template.HTMLEscapeString(service.Icon) + `" alt="" loading="lazy" decoding="async">`)
+	}
+	return template.HTML(`<span class="icon-fallback">` + template.HTMLEscapeString(service.DisplayIconText()) + `</span>`)
+}
+
+func inlineSVGHTML(body []byte) template.HTML {
+	svg := strings.TrimSpace(string(body))
+	if !strings.Contains(svg, "<svg") {
+		return emptyInlineIconHTML()
+	}
+	return template.HTML(`<span class="inline-icon" aria-hidden="true">` + svg + `</span>`)
+}
+
+func emptyInlineIconHTML() template.HTML {
+	return template.HTML(`<span class="inline-icon" aria-hidden="true"></span>`)
+}
+
+func fallbackInlineIconHTML(icon string) template.HTML {
+	text := fallbackIconText[icon]
+	if text == "" {
+		return emptyInlineIconHTML()
+	}
+	return template.HTML(`<span class="inline-icon inline-icon-fallback" aria-hidden="true">` + template.HTMLEscapeString(text) + `</span>`)
+}
+
+func (s *Server) prewarmIconCache(cfg *Config) {
+	if cfg.Assets.IconCacheDir == "" {
+		return
+	}
+	seen := make(map[string]struct{}, len(templateIconNames))
+	for _, icon := range templateIconNames {
+		seen[icon] = struct{}{}
+	}
+	for _, group := range cfg.Groups {
+		for _, service := range group.Services {
+			if service.IconIsOnline() {
+				seen[service.Icon] = struct{}{}
+			}
+		}
+	}
+
+	sem := make(chan struct{}, 6)
+	for icon := range seen {
+		collection, iconName, ok := strings.Cut(icon, ":")
+		if !ok || !iconifyPartPattern.MatchString(collection) || !iconifyPartPattern.MatchString(iconName) {
+			continue
+		}
+		go func(collection, iconName string) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			_, _ = loadIconifySVG(context.Background(), cfg.Assets.IconCacheDir, collection, iconName)
+		}(collection, iconName)
+	}
+}
+
 const indexTemplate = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1043,7 +1215,6 @@ const indexTemplate = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js" defer></script>
   <style>
     :root {
       color-scheme: dark;
@@ -1079,14 +1250,14 @@ const indexTemplate = `<!doctype html>
 	    .tool-button:disabled:hover { background: var(--control-bg); }
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
-	    .tool-button iconify-icon { font-size: 22px; }
+	    .tool-button .inline-icon { font-size: 22px; }
     .hero { display: grid; justify-items: center; gap: 22px; margin-bottom: 52px; }
     .title-row { display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap; }
     .clock { display: grid; gap: 4px; padding-bottom: 6px; }
     .clock-time { font-size: clamp(24px, 3vw, 36px); line-height: 1; font-weight: 800; }
     .clock-date { color: var(--muted); font-size: 16px; }
     .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid rgba(255,255,255,.58); border-radius: 18px; background: rgba(10,10,12,.18); display: grid; grid-template-columns: 42px 1fr; align-items: center; padding: 0 14px; backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); }
-    .search-wrap iconify-icon { color: #fff; font-size: 24px; }
+    .search-wrap .inline-icon { color: #fff; font-size: 24px; }
     .search { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 18px; }
     .search::placeholder { color: #9ea4b0; }
     .groups { display: grid; gap: 56px; }
@@ -1098,7 +1269,7 @@ const indexTemplate = `<!doctype html>
     .group-actions { display: flex; align-items: center; gap: 8px; }
     .group-action { width: 38px; height: 38px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .group-action:hover, .group-action.is-active { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.08); }
-    .group-action iconify-icon { font-size: 26px; }
+    .group-action .inline-icon { font-size: 26px; }
 	    .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 28px 20px; align-items: start; }
 	    .app-icon { display: grid; justify-items: center; gap: 8px; min-width: 0; color: #fff; }
 	    body.is-edit-mode .app-icon { cursor: grab; touch-action: none; }
@@ -1108,12 +1279,15 @@ const indexTemplate = `<!doctype html>
 	    .app-icon.is-dragging { position: fixed; left: 0; top: 0; z-index: 70; opacity: .96; pointer-events: none; filter: drop-shadow(0 22px 34px rgba(0,0,0,.46)); transform: translate3d(0,0,0); will-change: transform; }
 	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: var(--control-bg-hover); }
 	    .drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }
-	    .icon-button { width: 76px; height: 76px; border: 1px solid var(--control-border); border-radius: 14px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease, border-color .12s ease; position: relative; box-shadow: var(--control-shadow); backdrop-filter: blur(16px) saturate(135%); -webkit-backdrop-filter: blur(16px) saturate(135%); }
+    .icon-button { width: 76px; height: 76px; border: 1px solid var(--control-border); border-radius: 14px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease, border-color .12s ease; position: relative; box-shadow: var(--control-shadow); }
     .icon-button:hover { transform: translateY(-2px); background: var(--control-bg-hover); border-color: rgba(255,255,255,.25); }
     body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
     .icon-button:focus-visible { outline: 3px solid rgba(103, 224, 182, .45); outline-offset: 3px; }
-    .icon-button iconify-icon { font-size: 42px; }
+    .icon-button .inline-icon { font-size: 42px; }
     .icon-button img { width: 50px; height: 50px; object-fit: contain; border-radius: 10px; }
+    .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
+    .inline-icon svg { display: block; width: 1em; height: 1em; }
+    .inline-icon-fallback { font-weight: 900; }
     .icon-fallback { font-size: 17px; font-weight: 800; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .health-dot { position: absolute; right: 7px; bottom: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 0 2px rgba(10,10,12,.70), 0 2px 8px rgba(0,0,0,.28); }
     .health-dot[data-status="healthy"] { background: var(--ok); }
@@ -1129,11 +1303,11 @@ const indexTemplate = `<!doctype html>
     .menu-title { margin: 0 0 8px; color: #e8e8ef; font-size: 24px; font-weight: 700; }
     .menu-actions { display: flex; gap: 10px; }
     .menu-icon { width: 52px; height: 44px; border: 1px solid #82828b; border-radius: 5px; background: transparent; color: #f4f4f7; display: grid; place-items: center; cursor: pointer; }
-    .menu-icon iconify-icon { font-size: 24px; }
+    .menu-icon .inline-icon { font-size: 24px; }
     .menu-line { height: 1px; background: #696973; margin: 6px 0; }
     .menu-command { width: 100%; min-height: 54px; border: 0; background: transparent; color: #f4f4f7; display: flex; align-items: center; gap: 16px; padding: 0 24px; font-size: 22px; cursor: pointer; }
     .menu-command:hover, .menu-icon:hover { background: rgba(255,255,255,.08); }
-    .menu-command iconify-icon { font-size: 28px; }
+    .menu-command .inline-icon { font-size: 28px; }
     .modal-backdrop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.62); z-index: 60; padding: 18px; }
     .modal-backdrop.is-open { display: grid; }
     .modal { width: min(1100px, 100%); max-height: min(860px, calc(100vh - 36px)); overflow: auto; border-radius: 28px; background: #2d2d35; color: #f7f7fb; box-shadow: 0 22px 80px rgba(0,0,0,.62); padding: 28px 32px 32px; }
@@ -1141,7 +1315,7 @@ const indexTemplate = `<!doctype html>
     .confirm-modal { width: min(480px, 100%); max-height: calc(100vh - 36px); overflow: auto; border-radius: 18px; background: #25252d; border: 1px solid #595a64; color: #f7f7fb; box-shadow: 0 26px 90px rgba(0,0,0,.68); padding: 26px; }
     .confirm-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
     .confirm-mark { width: 46px; height: 46px; border-radius: 12px; background: rgba(231,125,130,.14); color: var(--danger); display: grid; place-items: center; flex: 0 0 auto; }
-    .confirm-mark iconify-icon { font-size: 26px; }
+    .confirm-mark .inline-icon { font-size: 26px; }
     .confirm-title { margin: 0; font-size: 24px; line-height: 1.2; letter-spacing: 0; }
     .confirm-body { margin: 0 0 8px; color: #e6e7ec; font-size: 17px; line-height: 1.55; }
     .confirm-name { color: #fff; font-weight: 800; overflow-wrap: anywhere; }
@@ -1157,12 +1331,12 @@ const indexTemplate = `<!doctype html>
     .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; }
     .modal-title { margin: 0; font-size: 30px; }
     .close-button { width: 44px; height: 44px; border: 0; border-radius: 7px; background: #565660; color: #ddd; cursor: pointer; display: grid; place-items: center; }
-    .close-button iconify-icon { font-size: 30px; }
+    .close-button .inline-icon { font-size: 30px; }
     .preview { background: #c2c8d0; border: 1px solid #9fa5ad; border-radius: 22px; min-height: 180px; display: grid; grid-template-columns: 1fr 220px; gap: 28px; align-items: center; padding: 18px 26px; margin-bottom: 26px; color: #0b0b0f; }
     .preview-wide { justify-self: end; width: min(420px, 100%); height: 140px; border-radius: 28px; background: #888d90; display: flex; align-items: center; justify-content: center; gap: 34px; color: #d9dde0; font-size: 28px; font-weight: 800; }
     .preview-square { width: 140px; display: grid; gap: 10px; justify-items: center; font-size: 28px; color: #050506; }
     .preview-icon { width: 140px; height: 140px; border-radius: 28px; background: #878c8f; display: grid; place-items: center; color: #d9dde0; }
-    .preview-icon iconify-icon { font-size: 62px; }
+    .preview-icon .inline-icon { font-size: 62px; }
     .preview-icon img { width: 92px; height: 92px; object-fit: contain; }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 20px; }
     .field { display: grid; gap: 8px; min-width: 0; }
@@ -1195,7 +1369,7 @@ const indexTemplate = `<!doctype html>
     .row-icon-button:disabled { cursor: default; opacity: .42; }
     .row-icon-button:disabled:hover { border-color: #60616b; color: #f4f4f7; background: transparent; }
     .row-icon-button[data-action="delete-group"]:hover { border-color: rgba(231,125,130,.74); color: var(--danger); }
-    .row-icon-button iconify-icon { font-size: 22px; }
+    .row-icon-button .inline-icon { font-size: 22px; }
     .settings-preview { min-height: 170px; border: 1px solid #676873; border-radius: 16px; background: #000; display: grid; place-items: center; color: #fff; margin-bottom: 24px; overflow: hidden; }
     .settings-preview span { padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.58); color: #fff; }
     .gallery-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
@@ -1217,7 +1391,7 @@ const indexTemplate = `<!doctype html>
     .gallery-action:hover { border-color: rgba(103,224,182,.72); color: var(--accent); }
     .gallery-action[data-action="delete-asset"]:hover { border-color: rgba(231,125,130,.74); color: var(--danger); }
     .gallery-action:disabled { opacity: .42; cursor: default; }
-    .gallery-action iconify-icon { font-size: 21px; }
+    .gallery-action .inline-icon { font-size: 21px; }
     .gallery-empty { display: none; border: 1px dashed #62636e; border-radius: 14px; color: var(--muted); padding: 28px; text-align: center; }
     .gallery-empty.is-visible { display: block; }
     .color-row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; }
@@ -1237,7 +1411,7 @@ const indexTemplate = `<!doctype html>
       .search-wrap { border-radius: 14px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
-      .icon-button iconify-icon { font-size: 36px; }
+      .icon-button .inline-icon { font-size: 36px; }
       .app-name { width: 78px; font-size: 13px; }
       .drag-placeholder { min-height: 109px; }
       .menu { left: 12px !important; right: 12px; top: auto !important; bottom: 12px; width: auto; }
@@ -1267,19 +1441,19 @@ const indexTemplate = `<!doctype html>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
-	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
-	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon></button>
-	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理"><iconify-icon icon="mdi:folder-cog-outline"></iconify-icon></button>
-	    <button class="tool-button" type="button" id="open-gallery-button" title="图库"><iconify-icon icon="mdi:image-multiple-outline"></iconify-icon></button>
-	    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
-    {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
+	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><span id="access-mode-icon">{{icon "mdi:web"}}</span></button>
+	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
+	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
+	    <button class="tool-button" type="button" id="open-gallery-button" title="图库">{{icon "mdi:image-multiple-outline"}}</button>
+	    <button class="tool-button" type="button" id="open-settings-button" title="页面设置">{{icon "mdi:image-edit-outline"}}</button>
+    {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录">{{icon "mdi:logout"}}</button></form>{{end}}
   </div>
   <main class="shell">
     <section class="hero">
       <div class="title-row">
         <div class="clock"><div class="clock-time" id="clock-time">--:--:--</div><div class="clock-date" id="clock-date">--</div></div>
       </div>
-      <div class="search-wrap"><iconify-icon icon="mdi:magnify"></iconify-icon><input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"></div>
+      <div class="search-wrap">{{icon "mdi:magnify"}}<input id="search" class="search" type="search" placeholder="搜索服务、描述或标签" autocomplete="off"></div>
     </section>
 
     <section class="groups">
@@ -1288,16 +1462,16 @@ const indexTemplate = `<!doctype html>
         <div class="group-title">
 	          <div class="group-heading"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / <span class="group-total-count">{{len .Services}}</span></span></div>
           <div class="group-actions">
-            <button class="group-action" type="button" data-action="manage-groups" title="分组管理"><iconify-icon icon="mdi:folder-cog-outline"></iconify-icon></button>
-            <button class="group-action" type="button" data-action="add-service" data-group-id="{{.ID}}" title="新增入口"><iconify-icon icon="mdi:plus"></iconify-icon></button>
-            <button class="group-action edit-mode-button" type="button" data-action="toggle-edit-mode" title="编辑模式"><iconify-icon icon="mdi:cursor-default-click-outline"></iconify-icon></button>
+            <button class="group-action" type="button" data-action="manage-groups" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
+            <button class="group-action" type="button" data-action="add-service" data-group-id="{{.ID}}" title="新增入口">{{icon "mdi:plus"}}</button>
+            <button class="group-action edit-mode-button" type="button" data-action="toggle-edit-mode" title="编辑模式">{{icon "mdi:cursor-default-click-outline"}}</button>
           </div>
         </div>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}" data-search="{{.Name}} {{.Description}} {{range .Tags}}{{.}} {{end}}">
             <a class="icon-button" href="{{.DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
-              {{if .IconIsOnline}}<img src="{{.IconImageSrc}}" alt="">{{else if .IconIsImage}}<img src="{{.Icon}}" alt="">{{else}}<span class="icon-fallback">{{.DisplayIconText}}</span>{{end}}
+              {{serviceIcon .}}
               <span class="health-dot" data-status="unknown"></span>
             </a>
             <div class="app-name">{{.Name}}</div>
@@ -1311,16 +1485,16 @@ const indexTemplate = `<!doctype html>
   </main>
 
   <div class="menu" id="item-menu" role="menu" aria-hidden="true">
-    <div class="menu-section"><p class="menu-title">打开外网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-external"><iconify-icon icon="mdi:open-in-new"></iconify-icon></button><button class="menu-icon" type="button" data-action="copy-external"><iconify-icon icon="mdi:link-variant"></iconify-icon></button></div></div>
-    <div class="menu-section"><p class="menu-title">打开内网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal"><iconify-icon icon="mdi:open-in-new"></iconify-icon></button><button class="menu-icon" type="button" data-action="copy-internal"><iconify-icon icon="mdi:link-variant"></iconify-icon></button></div></div>
+    <div class="menu-section"><p class="menu-title">打开外网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-external">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-external">{{icon "mdi:link-variant"}}</button></div></div>
+    <div class="menu-section"><p class="menu-title">打开内网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-internal">{{icon "mdi:link-variant"}}</button></div></div>
     <div class="menu-line"></div>
-    <button class="menu-command" type="button" data-action="edit"><iconify-icon icon="mdi:pencil-box-outline"></iconify-icon>编辑</button>
-    <button class="menu-command" type="button" data-action="delete"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon>删除</button>
+    <button class="menu-command" type="button" data-action="edit">{{icon "mdi:pencil-box-outline"}}编辑</button>
+    <button class="menu-command" type="button" data-action="delete">{{icon "mdi:trash-can-outline"}}删除</button>
   </div>
 
   <div class="modal-backdrop" id="edit-backdrop">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
-      <div class="modal-head"><h2 class="modal-title" id="edit-title">编辑入口</h2><button class="close-button" type="button" id="edit-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="modal-head"><h2 class="modal-title" id="edit-title">编辑入口</h2><button class="close-button" type="button" id="edit-close" aria-label="关闭">{{icon "mdi:close"}}</button></div>
       <div class="preview"><div class="preview-wide"><div class="preview-icon" id="preview-wide-icon"></div><span id="preview-wide-name">-</span></div><div class="preview-square"><div class="preview-icon" id="preview-square-icon"></div><span id="preview-square-name">-</span></div></div>
       <form id="edit-form">
         <input type="hidden" name="id">
@@ -1346,7 +1520,7 @@ const indexTemplate = `<!doctype html>
   </div>
 	  <div class="modal-backdrop" id="settings-backdrop">
 	    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-	      <div class="modal-head"><h2 class="modal-title" id="settings-title">页面设置</h2><button class="close-button" type="button" id="settings-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+	      <div class="modal-head"><h2 class="modal-title" id="settings-title">页面设置</h2><button class="close-button" type="button" id="settings-close" aria-label="关闭">{{icon "mdi:close"}}</button></div>
 	      <div class="settings-preview" id="settings-preview"><span>背景预览</span></div>
       <form id="settings-form">
         <div class="form-grid">
@@ -1360,14 +1534,14 @@ const indexTemplate = `<!doctype html>
 	  </div>
   <div class="modal-backdrop" id="gallery-backdrop">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-title">
-      <div class="modal-head"><h2 class="modal-title" id="gallery-title">图库</h2><button class="close-button" type="button" id="gallery-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="modal-head"><h2 class="modal-title" id="gallery-title">图库</h2><button class="close-button" type="button" id="gallery-close" aria-label="关闭">{{icon "mdi:close"}}</button></div>
       <div class="gallery-toolbar">
         <div class="gallery-tabs" role="tablist" aria-label="图库筛选">
           <button class="gallery-tab is-active" type="button" data-gallery-filter="all">全部</button>
           <button class="gallery-tab" type="button" data-gallery-filter="wallpaper">壁纸</button>
           <button class="gallery-tab" type="button" data-gallery-filter="icon">图标</button>
         </div>
-        <button class="upload-button" type="button" id="gallery-upload-button"><iconify-icon icon="mdi:upload"></iconify-icon> 上传</button>
+        <button class="upload-button" type="button" id="gallery-upload-button">{{icon "mdi:upload"}} 上传</button>
         <input class="file-input" id="gallery-upload-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon">
       </div>
       <div class="gallery-empty" id="gallery-empty">暂无可用图片资源。</div>
@@ -1376,10 +1550,10 @@ const indexTemplate = `<!doctype html>
   </div>
   <div class="modal-backdrop" id="groups-backdrop">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="groups-title">
-      <div class="modal-head"><h2 class="modal-title" id="groups-title">分组管理</h2><button class="close-button" type="button" id="groups-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="modal-head"><h2 class="modal-title" id="groups-title">分组管理</h2><button class="close-button" type="button" id="groups-close" aria-label="关闭">{{icon "mdi:close"}}</button></div>
       <div class="group-manager-toolbar">
-        <button class="secondary-button" type="button" id="add-group-button"><iconify-icon icon="mdi:plus"></iconify-icon> 新增分组</button>
-        <button class="secondary-button" type="button" id="save-group-sort-button" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon> 保存排序</button>
+        <button class="secondary-button" type="button" id="add-group-button">{{icon "mdi:plus"}} 新增分组</button>
+        <button class="secondary-button" type="button" id="save-group-sort-button" disabled>{{icon "mdi:content-save-outline"}} 保存排序</button>
       </div>
       <form id="group-form" class="group-form">
         <input type="hidden" name="id">
@@ -1394,10 +1568,10 @@ const indexTemplate = `<!doctype html>
         <article class="group-row" data-group-id="{{.ID}}" data-group-name="{{.Name}}" data-service-count="{{len .Services}}">
           <div><h3 class="group-row-title">{{.Name}}</h3><div class="group-row-meta">{{len .Services}} 个入口</div></div>
           <div class="group-row-actions">
-            <button class="row-icon-button" type="button" data-action="move-group-up" title="上移"><iconify-icon icon="mdi:arrow-up"></iconify-icon></button>
-            <button class="row-icon-button" type="button" data-action="move-group-down" title="下移"><iconify-icon icon="mdi:arrow-down"></iconify-icon></button>
-            <button class="row-icon-button" type="button" data-action="edit-group" title="编辑"><iconify-icon icon="mdi:pencil-box-outline"></iconify-icon></button>
-            <button class="row-icon-button" type="button" data-action="delete-group" title="删除"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></button>
+            <button class="row-icon-button" type="button" data-action="move-group-up" title="上移">{{icon "mdi:arrow-up"}}</button>
+            <button class="row-icon-button" type="button" data-action="move-group-down" title="下移">{{icon "mdi:arrow-down"}}</button>
+            <button class="row-icon-button" type="button" data-action="edit-group" title="编辑">{{icon "mdi:pencil-box-outline"}}</button>
+            <button class="row-icon-button" type="button" data-action="delete-group" title="删除">{{icon "mdi:trash-can-outline"}}</button>
           </div>
         </article>
         {{end}}
@@ -1406,7 +1580,7 @@ const indexTemplate = `<!doctype html>
   </div>
 	  <div class="modal-backdrop confirm-backdrop" id="delete-confirm-backdrop" aria-hidden="true">
 	    <section class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-description">
-	      <div class="confirm-head"><div class="confirm-mark"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></div><h2 class="confirm-title" id="delete-confirm-title">删除导航入口</h2></div>
+	      <div class="confirm-head"><div class="confirm-mark">{{icon "mdi:trash-can-outline"}}</div><h2 class="confirm-title" id="delete-confirm-title">删除导航入口</h2></div>
 	      <p class="confirm-body" id="delete-confirm-description">确定删除导航入口 <span class="confirm-name" id="delete-confirm-name">当前入口</span> 吗？</p>
       <p class="confirm-note">只会从导航配置里移除入口，不会删除、停止或重启真实服务。</p>
       <div class="confirm-actions"><button class="confirm-cancel" type="button" id="cancel-delete-button">取消</button><button class="confirm-delete" type="button" id="confirm-delete-button">删除</button></div>
@@ -1499,7 +1673,7 @@ const indexTemplate = `<!doctype html>
       accessMode = mode === 'internal' ? 'internal' : 'external';
       document.body.dataset.accessMode = accessMode;
       accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
-      accessModeIcon.setAttribute('icon', accessMode === 'internal' ? 'mdi:lan' : 'mdi:web');
+      accessModeIcon.innerHTML = accessMode === 'internal' ? {{iconJSON "mdi:lan"}} : {{iconJSON "mdi:web"}};
       for (const item of items) {
         const link = item.querySelector('.icon-button');
         const url = preferredURL(item, accessMode);
@@ -1706,10 +1880,10 @@ const indexTemplate = `<!doctype html>
 	              (used ? '<span class="gallery-badge is-used" title="' + escapeHTML(used) + '">使用中</span>' : '') +
 	            '</div>' +
 	            '<div class="gallery-actions">' +
-	              '<button class="gallery-action" type="button" data-action="copy-asset" title="复制路径"><iconify-icon icon="mdi:content-copy"></iconify-icon></button>' +
-	              (canUseIcon ? '<button class="gallery-action" type="button" data-action="use-icon-asset" title="填入图标"><iconify-icon icon="mdi:image-plus-outline"></iconify-icon></button>' : '') +
-	              (canUseBackground ? '<button class="gallery-action" type="button" data-action="use-background-asset" title="设为背景"><iconify-icon icon="mdi:wallpaper"></iconify-icon></button>' : '') +
-	              '<button class="gallery-action" type="button" data-action="delete-asset" title="' + (used ? '资源使用中' : '删除资源') + '"' + (used ? ' disabled' : '') + '><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></button>' +
+	              '<button class="gallery-action" type="button" data-action="copy-asset" title="复制路径">{{icon "mdi:content-copy"}}</button>' +
+	              (canUseIcon ? '<button class="gallery-action" type="button" data-action="use-icon-asset" title="填入图标">{{icon "mdi:image-plus-outline"}}</button>' : '') +
+	              (canUseBackground ? '<button class="gallery-action" type="button" data-action="use-background-asset" title="设为背景">{{icon "mdi:wallpaper"}}</button>' : '') +
+	              '<button class="gallery-action" type="button" data-action="delete-asset" title="' + (used ? '资源使用中' : '删除资源') + '"' + (used ? ' disabled' : '') + '>{{icon "mdi:trash-can-outline"}}</button>' +
 	            '</div>' +
 	          '</div>' +
 	        '</article>';
@@ -1787,7 +1961,7 @@ const indexTemplate = `<!doctype html>
 	        await loadGallery();
 	      } finally {
 	        galleryUploadButton.disabled = false;
-	        galleryUploadButton.innerHTML = '<iconify-icon icon="mdi:upload"></iconify-icon> 上传';
+	        galleryUploadButton.innerHTML = '{{icon "mdi:upload"}} 上传';
 	        galleryUploadFile.value = '';
 	      }
 	    }
@@ -2503,7 +2677,6 @@ const loginTemplate = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 - {{.Title}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js" defer></script>
   <style>
     :root {
       color-scheme: dark;
@@ -2531,7 +2704,10 @@ const loginTemplate = `<!doctype html>
     .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
     .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .tool-button:hover { background: #242424; }
-    .tool-button iconify-icon { font-size: 22px; }
+    .tool-button .inline-icon { font-size: 22px; }
+    .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
+    .inline-icon svg { display: block; width: 1em; height: 1em; }
+    .inline-icon-fallback { font-weight: 900; }
     main {
       width: min(430px, 100%);
       display: grid;
@@ -2606,7 +2782,7 @@ const loginTemplate = `<!doctype html>
 </head>
 <body>
   <div class="top-tools">
-    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
+    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><span id="access-mode-icon">{{icon "mdi:web"}}</span></button>
   </div>
   <main>
     <div>
@@ -2638,7 +2814,7 @@ const loginTemplate = `<!doctype html>
       const accessMode = mode === 'internal' ? 'internal' : 'external';
       document.body.dataset.accessMode = accessMode;
       accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
-      accessModeIcon.setAttribute('icon', accessMode === 'internal' ? 'mdi:lan' : 'mdi:web');
+      accessModeIcon.innerHTML = accessMode === 'internal' ? {{iconJSON "mdi:lan"}} : {{iconJSON "mdi:web"}};
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
     }
     accessModeButton.addEventListener('click', () => setAccessMode(document.body.dataset.accessMode === 'internal' ? 'external' : 'internal'));

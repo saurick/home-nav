@@ -209,10 +209,13 @@ func TestIndexIncludesAdaptiveBackgroundControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"data-background-overlay=\"medium\"", "name=\"background_overlay\"", "backgroundOverlayAlpha", "var(--control-bg)", "backdrop-filter: blur(16px)"} {
+	for _, want := range []string{"data-background-overlay=\"medium\"", "name=\"background_overlay\"", "backgroundOverlayAlpha", "var(--control-bg)", "backdrop-filter: blur(14px)", "class=\"inline-icon"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
+	}
+	if strings.Contains(body, "code.iconify.design") || strings.Contains(body, "<iconify-icon") {
+		t.Fatal("index should not depend on the Iconify web component runtime")
 	}
 }
 
@@ -254,10 +257,13 @@ func TestLoginIncludesAccessModeToggle(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-button\"", "home-nav.access-mode", "mdi:web"} {
+	for _, want := range []string{"id=\"access-mode-button\"", "home-nav.access-mode", "class=\"inline-icon"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected login to contain %q", want)
 		}
+	}
+	if strings.Contains(body, "code.iconify.design") || strings.Contains(body, "<iconify-icon") {
+		t.Fatal("login should not depend on the Iconify web component runtime")
 	}
 }
 
@@ -687,6 +693,9 @@ groups:
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected icon body")
 	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, max-age=604800" {
+		t.Fatalf("unexpected cache control: %q", got)
+	}
 }
 
 func TestUploadIcon(t *testing.T) {
@@ -922,6 +931,9 @@ groups:
 	}
 	if got := rec.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
 		t.Fatalf("unexpected content type: %q", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, max-age=604800" {
+		t.Fatalf("unexpected cache control: %q", got)
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected icon body")
