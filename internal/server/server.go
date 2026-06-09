@@ -54,6 +54,14 @@ type ServiceUpdateRequest struct {
 	Health      ServiceHealthUpdateRequest `json:"health"`
 }
 
+type GroupUpdateRequest struct {
+	Name string `json:"name"`
+}
+
+type GroupSortRequest struct {
+	GroupIDs []string `json:"group_ids"`
+}
+
 type ServiceSortRequest struct {
 	Groups []ServiceSortGroupRequest `json:"groups"`
 }
@@ -115,6 +123,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/login", s.handleLogin)
 	s.mux.HandleFunc("/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
+	s.mux.HandleFunc("/api/groups/sort", s.handleGroupSort)
+	s.mux.HandleFunc("/api/groups", s.handleGroups)
+	s.mux.HandleFunc("/api/groups/", s.handleGroup)
 	s.mux.HandleFunc("/api/services/sort", s.handleServiceSort)
 	s.mux.HandleFunc("/api/services", s.handleServices)
 	s.mux.HandleFunc("/api/services/", s.handleService)
@@ -151,6 +162,80 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(s.statuses.Snapshot())
+}
+
+func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
+	var payload GroupUpdateRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+
+	cfg, group, err := s.createGroup(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+	s.statuses.UpdateConfig(cfg)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"group": group})
+}
+
+func (s *Server) handleGroupSort(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
+	var payload GroupSortRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+
+	cfg, err := s.sortGroups(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+	s.statuses.UpdateConfig(cfg)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +310,59 @@ func (s *Server) handleServiceSort(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
+	if !s.authenticated(r) {
+		writeJSONError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	if r.Method != http.MethodPut && r.Method != http.MethodDelete {
+		writeJSONError(w, http.StatusMethodNotAllowed, "请求方法不支持")
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/groups/")
+	if id == "" || strings.Contains(id, "/") {
+		writeJSONError(w, http.StatusNotFound, "分组不存在")
+		return
+	}
+
+	var cfg *Config
+	var group Group
+	var err error
+	if r.Method == http.MethodDelete {
+		cfg, err = s.deleteGroup(id)
+	} else {
+		var payload GroupUpdateRequest
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "请求内容无效")
+			return
+		}
+		cfg, group, err = s.updateGroup(id, payload)
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SaveConfig(s.configPath, cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+	s.statuses.UpdateConfig(cfg)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.Method == http.MethodDelete {
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"group": group})
 }
 
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +558,65 @@ func (s *Server) currentConfig() *Config {
 	return s.cfg
 }
 
+func (s *Server) createGroup(payload GroupUpdateRequest) (*Config, Group, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	group := Group{
+		ID:   uniqueGroupID(cfg, payload.Name),
+		Name: payload.Name,
+	}
+	cfg.Groups = append(cfg.Groups, group)
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, Group{}, err
+	}
+	for _, candidate := range cfg.Groups {
+		if candidate.ID == group.ID {
+			return cfg, candidate, nil
+		}
+	}
+	return nil, Group{}, fmt.Errorf("分组新增失败")
+}
+
+func (s *Server) updateGroup(id string, payload GroupUpdateRequest) (*Config, Group, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	groupIndex := findGroup(cfg, id)
+	if groupIndex < 0 {
+		return nil, Group{}, fmt.Errorf("分组不存在")
+	}
+	cfg.Groups[groupIndex].Name = payload.Name
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, Group{}, err
+	}
+	return cfg, cfg.Groups[groupIndex], nil
+}
+
+func (s *Server) deleteGroup(id string) (*Config, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	groupIndex := findGroup(cfg, id)
+	if groupIndex < 0 {
+		return nil, fmt.Errorf("分组不存在")
+	}
+	if len(cfg.Groups) == 1 {
+		return nil, fmt.Errorf("至少需要保留一个分组")
+	}
+	if len(cfg.Groups[groupIndex].Services) > 0 {
+		return nil, fmt.Errorf("分组下还有入口，请先移动或删除入口")
+	}
+	cfg.Groups = append(cfg.Groups[:groupIndex], cfg.Groups[groupIndex+1:]...)
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (s *Server) createService(payload ServiceUpdateRequest) (*Config, Service, error) {
 	s.mu.RLock()
 	cfg := cloneConfig(s.cfg)
@@ -571,6 +768,40 @@ func (s *Server) deleteService(id string) (*Config, error) {
 	return cfg, nil
 }
 
+func (s *Server) sortGroups(payload GroupSortRequest) (*Config, error) {
+	s.mu.RLock()
+	cfg := cloneConfig(s.cfg)
+	s.mu.RUnlock()
+
+	if len(payload.GroupIDs) != len(cfg.Groups) {
+		return nil, fmt.Errorf("排序数据必须包含全部分组")
+	}
+
+	groupByID := make(map[string]Group, len(cfg.Groups))
+	for _, group := range cfg.Groups {
+		groupByID[group.ID] = group
+	}
+	seen := make(map[string]struct{}, len(cfg.Groups))
+	nextGroups := make([]Group, 0, len(cfg.Groups))
+	for _, rawGroupID := range payload.GroupIDs {
+		groupID := strings.TrimSpace(rawGroupID)
+		group, ok := groupByID[groupID]
+		if !ok {
+			return nil, fmt.Errorf("分组不存在")
+		}
+		if _, ok := seen[groupID]; ok {
+			return nil, fmt.Errorf("排序数据包含重复分组")
+		}
+		seen[groupID] = struct{}{}
+		nextGroups = append(nextGroups, group)
+	}
+	cfg.Groups = nextGroups
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (s *Server) sortServices(payload ServiceSortRequest) (*Config, error) {
 	s.mu.RLock()
 	cfg := cloneConfig(s.cfg)
@@ -644,6 +875,15 @@ func (s *Server) updateAppearance(payload AppearanceUpdateRequest) (*Config, err
 	return cfg, nil
 }
 
+func findGroup(cfg *Config, id string) int {
+	for gi, group := range cfg.Groups {
+		if group.ID == id {
+			return gi
+		}
+	}
+	return -1
+}
+
 func findService(cfg *Config, id string) (int, int) {
 	for gi, group := range cfg.Groups {
 		for si, service := range group.Services {
@@ -667,6 +907,26 @@ func cloneConfig(cfg *Config) *Config {
 		}
 	}
 	return &clone
+}
+
+func uniqueGroupID(cfg *Config, name string) string {
+	base := slugifyID(name)
+	if base == "" {
+		base = "group"
+	}
+	used := make(map[string]struct{}, len(cfg.Groups))
+	for _, group := range cfg.Groups {
+		used[group.ID] = struct{}{}
+	}
+	if _, ok := used[base]; !ok {
+		return base
+	}
+	for i := 2; ; i++ {
+		id := fmt.Sprintf("%s-%d", base, i)
+		if _, ok := used[id]; !ok {
+			return id
+		}
+	}
 }
 
 func uniqueServiceID(cfg *Config, name string) string {
@@ -899,6 +1159,21 @@ const indexTemplate = `<!doctype html>
     .save-button { background: var(--accent); color: #050505; }
     .delete-button { background: var(--danger); color: #050505; display: none; }
     .delete-button.is-visible { display: inline-block; }
+    .group-manager-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .group-form { display: none; border: 1px solid #555761; border-radius: 14px; background: rgba(255,255,255,.04); padding: 18px; margin-bottom: 18px; }
+    .group-form.is-open { display: block; }
+    .group-form-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: end; }
+    .group-list { display: grid; gap: 10px; }
+    .group-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; min-height: 74px; border: 1px solid #454751; border-radius: 14px; background: #24242c; padding: 14px 16px; }
+    .group-row-title { margin: 0; font-size: 20px; line-height: 1.25; overflow-wrap: anywhere; }
+    .group-row-meta { margin-top: 4px; color: var(--muted); font-size: 14px; }
+    .group-row-actions { display: flex; align-items: center; gap: 8px; }
+    .row-icon-button { width: 40px; height: 40px; border: 1px solid #60616b; border-radius: 8px; background: transparent; color: #f4f4f7; display: grid; place-items: center; cursor: pointer; }
+    .row-icon-button:hover { border-color: rgba(103,224,182,.72); color: var(--accent); background: rgba(255,255,255,.05); }
+    .row-icon-button:disabled { cursor: default; opacity: .42; }
+    .row-icon-button:disabled:hover { border-color: #60616b; color: #f4f4f7; background: transparent; }
+    .row-icon-button[data-action="delete-group"]:hover { border-color: rgba(231,125,130,.74); color: var(--danger); }
+    .row-icon-button iconify-icon { font-size: 22px; }
     .settings-preview { min-height: 170px; border: 1px solid #676873; border-radius: 16px; background: #000; display: grid; place-items: center; color: #fff; margin-bottom: 24px; overflow: hidden; }
     .settings-preview span { padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.58); color: #fff; }
     .color-row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; }
@@ -934,6 +1209,8 @@ const indexTemplate = `<!doctype html>
       .field.full { grid-column: auto; }
       .field label { font-size: 17px; }
       .field input, .field textarea, .field select { min-height: 50px; font-size: 16px; }
+      .group-form-row, .group-row { grid-template-columns: 1fr; align-items: stretch; }
+      .group-row-actions { justify-content: flex-end; flex-wrap: wrap; }
       .color-row { grid-template-columns: 70px 1fr; }
       .form-actions { justify-content: stretch; }
       .save-button, .secondary-button { width: 100%; }
@@ -944,6 +1221,7 @@ const indexTemplate = `<!doctype html>
 	  <div class="top-tools">
 	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon></button>
+	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理"><iconify-icon icon="mdi:folder-cog-outline"></iconify-icon></button>
 	    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
     {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
   </div>
@@ -962,6 +1240,7 @@ const indexTemplate = `<!doctype html>
         <div class="group-title">
 	          <div class="group-heading"><h2>{{.Name}}</h2><span class="group-count"><span class="group-visible-count">0</span> / <span class="group-total-count">{{len .Services}}</span></span></div>
           <div class="group-actions">
+            <button class="group-action" type="button" data-action="manage-groups" title="分组管理"><iconify-icon icon="mdi:folder-cog-outline"></iconify-icon></button>
             <button class="group-action" type="button" data-action="add-service" data-group-id="{{.ID}}" title="新增入口"><iconify-icon icon="mdi:plus"></iconify-icon></button>
             <button class="group-action edit-mode-button" type="button" data-action="toggle-edit-mode" title="编辑模式"><iconify-icon icon="mdi:cursor-default-click-outline"></iconify-icon></button>
           </div>
@@ -1017,23 +1296,53 @@ const indexTemplate = `<!doctype html>
       </form>
     </section>
   </div>
-  <div class="modal-backdrop" id="settings-backdrop">
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <div class="modal-head"><h2 class="modal-title" id="settings-title">页面设置</h2><button class="close-button" type="button" id="settings-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
-      <div class="settings-preview" id="settings-preview"><span>背景预览</span></div>
+	  <div class="modal-backdrop" id="settings-backdrop">
+	    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+	      <div class="modal-head"><h2 class="modal-title" id="settings-title">页面设置</h2><button class="close-button" type="button" id="settings-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+	      <div class="settings-preview" id="settings-preview"><span>背景预览</span></div>
       <form id="settings-form">
         <div class="form-grid">
           <div class="field"><label>背景颜色</label><div class="color-row"><input name="background_color_picker" type="color"><input name="background_color" placeholder="#000000"></div></div>
           <div class="field"><label>背景图片</label><div class="icon-field-row"><input name="background_image" placeholder="/uploads/background.png 或 https://example.com/bg.jpg"><button class="upload-button" type="button" id="upload-background-button">上传图片</button></div><input class="file-input" id="upload-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>
         </div>
         <div class="form-actions"><button class="secondary-button" type="button" id="reset-background-button">恢复默认</button><button class="save-button" type="submit">保存</button></div>
+	      </form>
+	    </section>
+	  </div>
+  <div class="modal-backdrop" id="groups-backdrop">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="groups-title">
+      <div class="modal-head"><h2 class="modal-title" id="groups-title">分组管理</h2><button class="close-button" type="button" id="groups-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="group-manager-toolbar">
+        <button class="secondary-button" type="button" id="add-group-button"><iconify-icon icon="mdi:plus"></iconify-icon> 新增分组</button>
+        <button class="secondary-button" type="button" id="save-group-sort-button" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon> 保存排序</button>
+      </div>
+      <form id="group-form" class="group-form">
+        <input type="hidden" name="id">
+        <div class="group-form-row">
+          <div class="field"><label>分组名称 *</label><input name="name" maxlength="80" required></div>
+          <button class="secondary-button" type="button" id="cancel-group-button">取消</button>
+          <button class="save-button" type="submit" id="save-group-button">保存</button>
+        </div>
       </form>
+      <div class="group-list" id="group-list">
+        {{range .Groups}}
+        <article class="group-row" data-group-id="{{.ID}}" data-group-name="{{.Name}}" data-service-count="{{len .Services}}">
+          <div><h3 class="group-row-title">{{.Name}}</h3><div class="group-row-meta">{{len .Services}} 个入口</div></div>
+          <div class="group-row-actions">
+            <button class="row-icon-button" type="button" data-action="move-group-up" title="上移"><iconify-icon icon="mdi:arrow-up"></iconify-icon></button>
+            <button class="row-icon-button" type="button" data-action="move-group-down" title="下移"><iconify-icon icon="mdi:arrow-down"></iconify-icon></button>
+            <button class="row-icon-button" type="button" data-action="edit-group" title="编辑"><iconify-icon icon="mdi:pencil-box-outline"></iconify-icon></button>
+            <button class="row-icon-button" type="button" data-action="delete-group" title="删除"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></button>
+          </div>
+        </article>
+        {{end}}
+      </div>
     </section>
   </div>
-  <div class="modal-backdrop confirm-backdrop" id="delete-confirm-backdrop" aria-hidden="true">
-    <section class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-description">
-      <div class="confirm-head"><div class="confirm-mark"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></div><h2 class="confirm-title" id="delete-confirm-title">删除导航入口</h2></div>
-      <p class="confirm-body" id="delete-confirm-description">确定删除导航入口 <span class="confirm-name" id="delete-confirm-name">当前入口</span> 吗？</p>
+	  <div class="modal-backdrop confirm-backdrop" id="delete-confirm-backdrop" aria-hidden="true">
+	    <section class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-description">
+	      <div class="confirm-head"><div class="confirm-mark"><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></div><h2 class="confirm-title" id="delete-confirm-title">删除导航入口</h2></div>
+	      <p class="confirm-body" id="delete-confirm-description">确定删除导航入口 <span class="confirm-name" id="delete-confirm-name">当前入口</span> 吗？</p>
       <p class="confirm-note">只会从导航配置里移除入口，不会删除、停止或重启真实服务。</p>
       <div class="confirm-actions"><button class="confirm-cancel" type="button" id="cancel-delete-button">取消</button><button class="confirm-delete" type="button" id="confirm-delete-button">删除</button></div>
     </section>
@@ -1045,12 +1354,15 @@ const indexTemplate = `<!doctype html>
     const items = [...document.querySelectorAll('.app-icon')];
     const groups = [...document.querySelectorAll('.group')];
     const menu = document.querySelector('#item-menu');
-    const backdrop = document.querySelector('#edit-backdrop');
-    const settingsBackdrop = document.querySelector('#settings-backdrop');
-    const deleteConfirmBackdrop = document.querySelector('#delete-confirm-backdrop');
-    const form = document.querySelector('#edit-form');
-    const settingsForm = document.querySelector('#settings-form');
-    const toast = document.querySelector('#toast');
+	    const backdrop = document.querySelector('#edit-backdrop');
+	    const settingsBackdrop = document.querySelector('#settings-backdrop');
+	    const groupsBackdrop = document.querySelector('#groups-backdrop');
+	    const deleteConfirmBackdrop = document.querySelector('#delete-confirm-backdrop');
+	    const form = document.querySelector('#edit-form');
+	    const settingsForm = document.querySelector('#settings-form');
+	    const groupForm = document.querySelector('#group-form');
+	    const groupList = document.querySelector('#group-list');
+	    const toast = document.querySelector('#toast');
     const uploadButton = document.querySelector('#upload-icon-button');
     const uploadFile = document.querySelector('#upload-icon-file');
     const uploadBackgroundButton = document.querySelector('#upload-background-button');
@@ -1060,10 +1372,14 @@ const indexTemplate = `<!doctype html>
     const saveButton = form.querySelector('.save-button');
     const deleteButton = document.querySelector('#delete-service-button');
     const cancelDeleteButton = document.querySelector('#cancel-delete-button');
-    const confirmDeleteButton = document.querySelector('#confirm-delete-button');
-    const deleteConfirmName = document.querySelector('#delete-confirm-name');
-    const saveSortButton = document.querySelector('#save-sort-button');
-    const accessModeButton = document.querySelector('#access-mode-button');
+	    const confirmDeleteButton = document.querySelector('#confirm-delete-button');
+	    const deleteConfirmTitle = document.querySelector('#delete-confirm-title');
+	    const deleteConfirmDescription = document.querySelector('#delete-confirm-description');
+	    const deleteConfirmNote = document.querySelector('.confirm-note');
+	    const deleteConfirmName = document.querySelector('#delete-confirm-name');
+	    const saveSortButton = document.querySelector('#save-sort-button');
+	    const saveGroupSortButton = document.querySelector('#save-group-sort-button');
+	    const accessModeButton = document.querySelector('#access-mode-button');
     const accessModeIcon = document.querySelector('#access-mode-icon');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
@@ -1071,15 +1387,18 @@ const indexTemplate = `<!doctype html>
     let editMode = false;
     let accessMode = 'external';
     let sortDirty = false;
-    let sortSaving = false;
-    let sortSaveQueued = false;
-    let dragState = null;
-    let suppressNextEditClick = false;
-    let pendingDelete = null;
+	    let sortSaving = false;
+	    let sortSaveQueued = false;
+	    let groupSortDirty = false;
+	    let groupSortSaving = false;
+	    let dragState = null;
+	    let suppressNextEditClick = false;
+	    let pendingDelete = null;
 
-    function field(name) { return form.elements.namedItem(name); }
-    function settingField(name) { return settingsForm.elements.namedItem(name); }
-    function updateClock() {
+	    function field(name) { return form.elements.namedItem(name); }
+	    function settingField(name) { return settingsForm.elements.namedItem(name); }
+	    function groupField(name) { return groupForm.elements.namedItem(name); }
+	    function updateClock() {
       const now = new Date();
       document.querySelector('#clock-time').textContent = now.toLocaleTimeString('en-GB', { hour12: false });
       document.querySelector('#clock-date').textContent = now.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', weekday: 'long' });
@@ -1269,11 +1588,100 @@ const indexTemplate = `<!doctype html>
       settingField('background_image').value = image;
       applyBackgroundPreview(color, image, settingsPreview);
       settingsBackdrop.classList.add('is-open');
-    }
-    function closeSettings() { settingsBackdrop.classList.remove('is-open'); }
-    async function copyText(value) {
-      if (!value) return showToast('没有可复制的链接');
-      await navigator.clipboard.writeText(value);
+	    }
+	    function closeSettings() { settingsBackdrop.classList.remove('is-open'); }
+	    function openGroups() {
+	      refreshGroupMoveButtons();
+	      groupsBackdrop.classList.add('is-open');
+	      closeMenu();
+	    }
+	    function closeGroups() {
+	      groupsBackdrop.classList.remove('is-open');
+	      closeGroupForm();
+	    }
+	    function openGroupForm(row) {
+	      const editing = Boolean(row);
+	      groupField('id').value = editing ? row.dataset.groupId : '';
+	      groupField('name').value = editing ? (row.dataset.groupName || '') : '';
+	      document.querySelector('#save-group-button').textContent = editing ? '保存' : '新增';
+	      groupForm.classList.add('is-open');
+	      groupField('name').focus();
+	    }
+	    function closeGroupForm() {
+	      groupForm.reset();
+	      groupField('id').value = '';
+	      groupForm.classList.remove('is-open');
+	    }
+	    function groupRows() { return [...groupList.querySelectorAll('.group-row')]; }
+	    function refreshGroupMoveButtons() {
+	      const rows = groupRows();
+	      rows.forEach((row, index) => {
+	        row.querySelector('[data-action="move-group-up"]').disabled = index === 0;
+	        row.querySelector('[data-action="move-group-down"]').disabled = index === rows.length - 1;
+	      });
+	    }
+	    function setGroupSortDirty(value) {
+	      groupSortDirty = value;
+	      saveGroupSortButton.disabled = groupSortSaving || !groupSortDirty;
+	    }
+	    function groupSortPayload() {
+	      return { group_ids: groupRows().map(row => row.dataset.groupId) };
+	    }
+	    async function saveGroup(event) {
+	      event.preventDefault();
+	      const id = groupField('id').value;
+	      const payload = { name: groupField('name').value };
+	      const url = id ? '/api/groups/' + encodeURIComponent(id) : '/api/groups';
+	      const method = id ? 'PUT' : 'POST';
+	      const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+	      if (!response.ok) {
+	        const error = await response.json().catch(() => ({ error: '保存分组失败' }));
+	        showToast(error.error || '保存分组失败');
+	        return;
+	      }
+	      showToast(id ? '分组已保存' : '分组已新增');
+	      setTimeout(() => location.reload(), 500);
+	    }
+	    async function saveGroupSort() {
+	      if (groupSortSaving || !groupSortDirty) return;
+	      const payload = groupSortPayload();
+	      groupSortSaving = true;
+	      saveGroupSortButton.disabled = true;
+	      try {
+	        const response = await fetch('/api/groups/sort', {
+	          method: 'PUT',
+	          headers: { 'Content-Type': 'application/json' },
+	          body: JSON.stringify(payload)
+	        });
+	        if (!response.ok) {
+	          const error = await response.json().catch(() => ({ error: '保存分组排序失败' }));
+	          showToast(error.error || '保存分组排序失败');
+	          setGroupSortDirty(true);
+	          return;
+	        }
+	        setGroupSortDirty(false);
+	        showToast('分组排序已保存');
+	        setTimeout(() => location.reload(), 500);
+	      } finally {
+	        groupSortSaving = false;
+	        saveGroupSortButton.disabled = !groupSortDirty;
+	      }
+	    }
+	    function moveGroup(row, direction) {
+	      if (!row) return;
+	      if (direction < 0 && row.previousElementSibling) {
+	        groupList.insertBefore(row, row.previousElementSibling);
+	        setGroupSortDirty(true);
+	      }
+	      if (direction > 0 && row.nextElementSibling) {
+	        groupList.insertBefore(row.nextElementSibling, row);
+	        setGroupSortDirty(true);
+	      }
+	      refreshGroupMoveButtons();
+	    }
+	    async function copyText(value) {
+	      if (!value) return showToast('没有可复制的链接');
+	      await navigator.clipboard.writeText(value);
       showToast('链接已复制');
     }
     async function refreshStatus() {
@@ -1323,13 +1731,17 @@ const indexTemplate = `<!doctype html>
       showToast(id ? '已保存' : '已新增');
       setTimeout(() => location.reload(), 500);
     }
-    function openDeleteConfirm(id, name) {
-      if (!id) return;
-      pendingDelete = { id, name: name || '当前入口' };
-      deleteConfirmName.textContent = '“' + pendingDelete.name + '”';
-      confirmDeleteButton.disabled = false;
-      confirmDeleteButton.textContent = '删除';
-      deleteConfirmBackdrop.classList.add('is-open');
+	    function openDeleteConfirm(id, name, type = 'service') {
+	      if (!id) return;
+	      pendingDelete = { id, type, name: name || (type === 'group' ? '当前分组' : '当前入口') };
+	      const isGroup = pendingDelete.type === 'group';
+	      deleteConfirmTitle.textContent = isGroup ? '删除分组' : '删除导航入口';
+	      deleteConfirmDescription.firstChild.nodeValue = isGroup ? '确定删除分组 ' : '确定删除导航入口 ';
+	      deleteConfirmName.textContent = '“' + pendingDelete.name + '”';
+	      deleteConfirmNote.textContent = isGroup ? '只能删除空分组；含有入口的分组需要先移动或删除入口。' : '只会从导航配置里移除入口，不会删除、停止或重启真实服务。';
+	      confirmDeleteButton.disabled = false;
+	      confirmDeleteButton.textContent = '删除';
+	      deleteConfirmBackdrop.classList.add('is-open');
       deleteConfirmBackdrop.setAttribute('aria-hidden', 'false');
       confirmDeleteButton.focus();
     }
@@ -1339,26 +1751,27 @@ const indexTemplate = `<!doctype html>
       deleteConfirmBackdrop.setAttribute('aria-hidden', 'true');
       confirmDeleteButton.disabled = false;
       confirmDeleteButton.textContent = '删除';
-    }
-    async function performDelete() {
-      if (!pendingDelete?.id) return;
-      const id = pendingDelete.id;
-      confirmDeleteButton.disabled = true;
-      confirmDeleteButton.textContent = '删除中';
-      const response = await fetch('/api/services/' + encodeURIComponent(id), { method: 'DELETE' });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '删除失败' }));
-        showToast(error.error || '删除失败');
-        confirmDeleteButton.disabled = false;
-        confirmDeleteButton.textContent = '删除';
-        return;
-      }
-      showToast('已删除');
-      setTimeout(() => location.reload(), 500);
-    }
-    async function deleteItem() {
-      openDeleteConfirm(field('id').value, field('name').value);
-    }
+	    }
+	    async function performDelete() {
+	      if (!pendingDelete?.id) return;
+	      const id = pendingDelete.id;
+	      const isGroup = pendingDelete.type === 'group';
+	      confirmDeleteButton.disabled = true;
+	      confirmDeleteButton.textContent = '删除中';
+	      const response = await fetch((isGroup ? '/api/groups/' : '/api/services/') + encodeURIComponent(id), { method: 'DELETE' });
+	      if (!response.ok) {
+	        const error = await response.json().catch(() => ({ error: isGroup ? '删除分组失败' : '删除失败' }));
+	        showToast(error.error || (isGroup ? '删除分组失败' : '删除失败'));
+	        confirmDeleteButton.disabled = false;
+	        confirmDeleteButton.textContent = '删除';
+	        return;
+	      }
+	      showToast(isGroup ? '分组已删除' : '已删除');
+	      setTimeout(() => location.reload(), 500);
+	    }
+	    async function deleteItem() {
+	      openDeleteConfirm(field('id').value, field('name').value, 'service');
+	    }
     async function saveSettings(event) {
       event.preventDefault();
       const payload = {
@@ -1743,6 +2156,7 @@ const indexTemplate = `<!doctype html>
 	    document.addEventListener('click', event => {
 	      const actionButton = event.target.closest('.group-action[data-action]');
 	      if (!actionButton) return;
+	      if (actionButton.dataset.action === 'manage-groups') openGroups();
 	      if (actionButton.dataset.action === 'add-service') openCreate(actionButton.dataset.groupId || '');
 	      if (actionButton.dataset.action === 'toggle-edit-mode') setEditMode(!editMode);
 	    });
@@ -1767,11 +2181,27 @@ const indexTemplate = `<!doctype html>
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
 	    accessModeButton.addEventListener('click', toggleAccessMode);
 	    saveSortButton.addEventListener('click', () => saveSort());
+    document.querySelector('#open-groups-button').addEventListener('click', openGroups);
+    document.querySelector('#groups-close').addEventListener('click', closeGroups);
+    document.querySelector('#add-group-button').addEventListener('click', () => openGroupForm(null));
+    document.querySelector('#cancel-group-button').addEventListener('click', closeGroupForm);
+    saveGroupSortButton.addEventListener('click', saveGroupSort);
+    groupForm.addEventListener('submit', saveGroup);
+    groupList.addEventListener('click', event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const row = button.closest('.group-row');
+      if (button.dataset.action === 'move-group-up') moveGroup(row, -1);
+      if (button.dataset.action === 'move-group-down') moveGroup(row, 1);
+      if (button.dataset.action === 'edit-group') openGroupForm(row);
+      if (button.dataset.action === 'delete-group') openDeleteConfirm(row?.dataset.groupId, row?.dataset.groupName, 'group');
+    });
     document.querySelector('#open-settings-button').addEventListener('click', openSettings);
     document.querySelector('#edit-close').addEventListener('click', closeEdit);
     document.querySelector('#settings-close').addEventListener('click', closeSettings);
     backdrop.addEventListener('click', event => { if (event.target === backdrop) closeEdit(); });
     settingsBackdrop.addEventListener('click', event => { if (event.target === settingsBackdrop) closeSettings(); });
+    groupsBackdrop.addEventListener('click', event => { if (event.target === groupsBackdrop) closeGroups(); });
     deleteConfirmBackdrop.addEventListener('click', event => { if (event.target === deleteConfirmBackdrop) closeDeleteConfirm(); });
     cancelDeleteButton.addEventListener('click', closeDeleteConfirm);
     confirmDeleteButton.addEventListener('click', performDelete);

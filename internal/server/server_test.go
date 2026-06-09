@@ -128,6 +128,27 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 	}
 }
 
+func TestIndexIncludesGroupManagementControls(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"id=\"open-groups-button\"", "id=\"groups-backdrop\"", "id=\"group-form\"", "id=\"group-list\"", "id=\"save-group-sort-button\"", "data-action=\"manage-groups\"", "data-action=\"edit-group\"", "data-action=\"delete-group\"", "/api/groups/sort", "/api/groups/"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
+	}
+}
+
 func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
@@ -412,6 +433,100 @@ func TestServiceSortRejectsIncompleteOrder(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
+func TestGroupCreateUpdateSortAndDeleteSavesConfig(t *testing.T) {
+	configPath := writeTempConfig(t, sortTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/groups", bytes.NewReader([]byte(`{"name":"媒体服务"}`)))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("expected create status %d, got %d: %s", http.StatusOK, createRec.Code, createRec.Body.String())
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload after create: %v", err)
+	}
+	if len(cfg.Groups) != 3 || cfg.Groups[2].Name != "媒体服务" {
+		t.Fatalf("group was not created correctly: %#v", cfg.Groups)
+	}
+	createdID := cfg.Groups[2].ID
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/groups/"+createdID, bytes.NewReader([]byte(`{"name":"影音服务"}`)))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.AddCookie(cookie)
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected update status %d, got %d: %s", http.StatusOK, updateRec.Code, updateRec.Body.String())
+	}
+
+	sortReq := httptest.NewRequest(http.MethodPut, "/api/groups/sort", bytes.NewReader([]byte(`{"group_ids":["`+createdID+`","tools","ops"]}`)))
+	sortReq.Header.Set("Content-Type", "application/json")
+	sortReq.AddCookie(cookie)
+	sortRec := httptest.NewRecorder()
+	srv.ServeHTTP(sortRec, sortReq)
+	if sortRec.Code != http.StatusOK {
+		t.Fatalf("expected sort status %d, got %d: %s", http.StatusOK, sortRec.Code, sortRec.Body.String())
+	}
+
+	cfg, err = LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload after sort: %v", err)
+	}
+	gotOrder := []string{cfg.Groups[0].ID, cfg.Groups[1].ID, cfg.Groups[2].ID}
+	if strings.Join(gotOrder, ",") != createdID+",tools,ops" {
+		t.Fatalf("unexpected group order: %v", gotOrder)
+	}
+	if cfg.Groups[0].Name != "影音服务" {
+		t.Fatalf("group name was not updated: %#v", cfg.Groups[0])
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/groups/"+createdID, nil)
+	deleteReq.AddCookie(cookie)
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected delete status %d, got %d: %s", http.StatusOK, deleteRec.Code, deleteRec.Body.String())
+	}
+
+	cfg, err = LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("saved config did not reload after delete: %v", err)
+	}
+	gotOrder = []string{cfg.Groups[0].ID, cfg.Groups[1].ID}
+	if strings.Join(gotOrder, ",") != "tools,ops" {
+		t.Fatalf("unexpected group order after delete: %v", gotOrder)
+	}
+}
+
+func TestGroupDeleteRejectsNonEmptyGroup(t *testing.T) {
+	configPath := writeTempConfig(t, sortTestConfig())
+	srv, err := New(configPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/groups/ops", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "分组下还有入口") {
+		t.Fatalf("expected non-empty group error, got %s", rec.Body.String())
 	}
 }
 
