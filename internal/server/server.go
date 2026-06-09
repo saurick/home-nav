@@ -1502,15 +1502,47 @@ const indexTemplate = `<!doctype html>
 	      for (const node of moved) node.getBoundingClientRect();
 	      window.requestAnimationFrame(() => {
 	        for (const node of moved) {
+	          const token = String(Date.now()) + Math.random();
+	          node.dataset.sortAnimationToken = token;
 	          node.style.transition = 'transform 150ms cubic-bezier(.2,0,.2,1)';
 	          node.style.transform = 'translate3d(0,0,0)';
 	          window.setTimeout(() => {
 	            if (node.classList.contains('is-dragging')) return;
+	            if (node.dataset.sortAnimationToken !== token) return;
+	            delete node.dataset.sortAnimationToken;
 	            node.style.transition = '';
 	            node.style.transform = '';
 	          }, 180);
 	        }
 	      });
+	    }
+	    function layoutSortRect(node) {
+	      const transition = node.style.transition;
+	      const transform = node.style.transform;
+	      if (!transform || transform === 'translate3d(0,0,0)') return node.getBoundingClientRect();
+	      node.style.transition = 'none';
+	      node.style.transform = '';
+	      const rect = node.getBoundingClientRect();
+	      node.style.transform = transform;
+	      node.style.transition = transition;
+	      return rect;
+	    }
+	    function sortRowsFor(items) {
+	      const rows = [];
+	      for (const item of items) {
+	        const rect = layoutSortRect(item);
+	        let row = rows.find(existing => Math.abs(existing.top - rect.top) < 8);
+	        if (!row) {
+	          row = { top: rect.top, bottom: rect.bottom, items: [] };
+	          rows.push(row);
+	        }
+	        row.top = Math.min(row.top, rect.top);
+	        row.bottom = Math.max(row.bottom, rect.bottom);
+	        row.items.push({ item, rect });
+	      }
+	      rows.sort((a, b) => a.top - b.top);
+	      for (const row of rows) row.items.sort((a, b) => a.rect.left - b.rect.left);
+	      return rows;
 	    }
 	    function movePlaceholderBefore(targetItem) {
 	      if (dragState.placeholder.nextElementSibling === targetItem) return;
@@ -1572,18 +1604,23 @@ const indexTemplate = `<!doctype html>
 	      const target = document.elementFromPoint(clientX, clientY);
 	      if (!target) return;
 	      const targetItem = target.closest('.app-icon:not(.is-dragging)');
-	      if (targetItem) {
-	        const rect = targetItem.getBoundingClientRect();
-	        const centerX = rect.left + rect.width / 2;
-	        const upperBand = rect.top + rect.height * .35;
-	        const lowerBand = rect.top + rect.height * .65;
-	        const before = clientY < upperBand || (clientY <= lowerBand && clientX < centerX);
-	        if (before) movePlaceholderBefore(targetItem);
-	        else movePlaceholderAfter(targetItem);
+	      const targetGrid = targetItem?.closest('.icon-grid') || target.closest('.icon-grid');
+	      if (!targetGrid) return;
+	      const items = [...targetGrid.querySelectorAll('.app-icon:not(.is-dragging):not(.is-hidden)')];
+	      if (!items.length) {
+	        appendPlaceholderTo(targetGrid);
 	        return;
 	      }
-	      const targetGrid = target.closest('.icon-grid');
-	      if (targetGrid) appendPlaceholderTo(targetGrid);
+	      const rows = sortRowsFor(items);
+	      const row = rows.find(candidate => clientY <= candidate.bottom) || rows[rows.length - 1];
+	      for (const { item, rect } of row.items) {
+	        const centerX = rect.left + rect.width / 2;
+	        if (clientX < centerX) {
+	          movePlaceholderBefore(item);
+	          return;
+	        }
+	      }
+	      movePlaceholderAfter(row.items[row.items.length - 1].item);
 	    }
 	    function startDragPointer(event, item, button) {
 	      if (!editMode || event.button !== 0) return;

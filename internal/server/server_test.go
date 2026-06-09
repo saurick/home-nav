@@ -115,7 +115,7 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "id=\"delete-confirm-backdrop\"", "id=\"confirm-delete-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "openDeleteConfirm", "performDelete", "startDragPointer", "startMouseDrag", "dragPlaceholderFor", "animateGridMove", "requestAnimationFrame", "sortPayload"} {
+	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "id=\"delete-confirm-backdrop\"", "id=\"confirm-delete-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "openDeleteConfirm", "performDelete", "startDragPointer", "startMouseDrag", "dragPlaceholderFor", "animateGridMove", "layoutSortRect", "sortRowsFor", "sortAnimationToken", "requestAnimationFrame", "sortPayload"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
