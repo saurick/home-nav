@@ -3,6 +3,9 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -165,6 +168,27 @@ func TestIndexIncludesGroupManagementControls(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{"id=\"open-groups-button\"", "id=\"groups-backdrop\"", "id=\"group-form\"", "id=\"group-list\"", "id=\"save-group-sort-button\"", "data-action=\"manage-groups\"", "data-action=\"edit-group\"", "data-action=\"delete-group\"", "/api/groups/sort", "/api/groups/"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
+	}
+}
+
+func TestIndexIncludesGalleryControls(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"id=\"open-gallery-button\"", "id=\"gallery-backdrop\"", "id=\"gallery-grid\"", "data-gallery-filter=\"wallpaper\"", "data-gallery-filter=\"icon\"", "/api/assets", "delete-asset", "use-background-asset", "use-icon-asset"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -685,6 +709,133 @@ groups:
 	}
 }
 
+func TestAssetGalleryListsAndDeletesUnusedAssets(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "2026", "6", "9"), 0700); err != nil {
+		t.Fatalf("mkdir upload tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "icon.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0600); err != nil {
+		t.Fatalf("write icon: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "unused.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0600); err != nil {
+		t.Fatalf("write unused: %v", err)
+	}
+	writePNG(t, filepath.Join(dir, "2026", "6", "9", "wallpaper.png"), 1000, 500)
+
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+assets:
+  uploads_dir: `+dir+`
+  uploads_url_prefix: /uploads/
+appearance:
+  background_color: "#000000"
+  background_image: /uploads/2026/6/9/wallpaper.png
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        icon: /uploads/icon.svg
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/assets", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d: %s", http.StatusOK, listRec.Code, listRec.Body.String())
+	}
+	var listPayload struct {
+		Assets []AssetItem `json:"assets"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode asset list: %v", err)
+	}
+	if len(listPayload.Assets) != 3 {
+		t.Fatalf("expected 3 assets, got %#v", listPayload.Assets)
+	}
+	byURL := make(map[string]AssetItem)
+	for _, asset := range listPayload.Assets {
+		byURL[asset.URL] = asset
+	}
+	if byURL["/uploads/icon.svg"].Type != "icon" || len(byURL["/uploads/icon.svg"].UsedBy) != 1 {
+		t.Fatalf("expected used icon asset, got %#v", byURL["/uploads/icon.svg"])
+	}
+	if byURL["/uploads/2026/6/9/wallpaper.png"].Type != "wallpaper" || len(byURL["/uploads/2026/6/9/wallpaper.png"].UsedBy) != 1 {
+		t.Fatalf("expected used wallpaper asset, got %#v", byURL["/uploads/2026/6/9/wallpaper.png"])
+	}
+
+	usedDeleteReq := httptest.NewRequest(http.MethodDelete, "/api/assets?url=/uploads/icon.svg", nil)
+	usedDeleteReq.AddCookie(cookie)
+	usedDeleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(usedDeleteRec, usedDeleteReq)
+	if usedDeleteRec.Code != http.StatusConflict {
+		t.Fatalf("expected used delete status %d, got %d: %s", http.StatusConflict, usedDeleteRec.Code, usedDeleteRec.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/assets?url=/uploads/unused.svg", nil)
+	deleteReq.AddCookie(cookie)
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected delete status %d, got %d: %s", http.StatusOK, deleteRec.Code, deleteRec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "unused.svg")); !os.IsNotExist(err) {
+		t.Fatalf("expected unused asset to be deleted, stat err=%v", err)
+	}
+}
+
+func TestAssetDeleteRejectsPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+assets:
+  uploads_dir: `+dir+`
+  uploads_url_prefix: /uploads/
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/api/assets?url=/uploads/../services.yaml", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected traversal status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
 func TestServesCachedIconifyIcon(t *testing.T) {
 	cacheDir := t.TempDir()
 	iconDir := filepath.Join(cacheDir, "mdi")
@@ -857,6 +1008,24 @@ func writeTempConfig(t *testing.T, content string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
+}
+
+func writePNG(t *testing.T, path string, width, height int) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create png: %v", err)
+	}
+	defer file.Close()
+	if err := png.Encode(file, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
 }
 
 func authTestConfig() string {

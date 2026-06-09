@@ -130,6 +130,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/services", s.handleServices)
 	s.mux.HandleFunc("/api/services/", s.handleService)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
+	s.mux.HandleFunc("/api/assets", s.handleAssets)
 	s.mux.HandleFunc("/api/uploads", s.handleUpload)
 	s.mux.HandleFunc("/.iconify/", s.handleIconifyIcon)
 	if s.cfg.Assets.UploadsDir != "" {
@@ -1149,7 +1150,7 @@ const indexTemplate = `<!doctype html>
     .field input, .field textarea, .field select { width: 100%; min-height: 56px; border: 1px solid transparent; border-radius: 6px; background: #48484f; color: #f3f3f7; padding: 0 18px; font-size: 20px; outline: 0; }
     .field textarea { min-height: 92px; padding-top: 14px; resize: vertical; line-height: 1.45; }
     .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,182,.15); }
-    .icon-field-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .icon-field-row { display: grid; grid-template-columns: 1fr repeat(2, auto); gap: 10px; align-items: center; }
     .upload-button { min-height: 56px; border: 1px solid #73737d; border-radius: 6px; background: #3d3d45; color: #f3f3f7; padding: 0 18px; cursor: pointer; white-space: nowrap; }
     .upload-button:hover { background: #50505a; }
     .file-input { position: fixed; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
@@ -1175,6 +1176,28 @@ const indexTemplate = `<!doctype html>
     .row-icon-button iconify-icon { font-size: 22px; }
     .settings-preview { min-height: 170px; border: 1px solid #676873; border-radius: 16px; background: #000; display: grid; place-items: center; color: #fff; margin-bottom: 24px; overflow: hidden; }
     .settings-preview span { padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.58); color: #fff; }
+    .gallery-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+    .gallery-tabs { display: flex; align-items: center; border: 1px solid #696a75; border-radius: 8px; overflow: hidden; }
+    .gallery-tab { min-height: 46px; border: 0; border-right: 1px solid #696a75; background: transparent; color: #ececf2; padding: 0 22px; font-size: 18px; font-weight: 800; cursor: pointer; }
+    .gallery-tab:last-child { border-right: 0; }
+    .gallery-tab.is-active { background: var(--accent); color: #07100d; }
+    .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px; min-height: 160px; }
+    .gallery-card { min-width: 0; border: 1px solid #484a55; border-radius: 10px; background: #26262e; overflow: hidden; }
+    .gallery-thumb { height: 132px; background-color: #bfc3ca; background-image: linear-gradient(45deg, rgba(255,255,255,.42) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.42) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.42) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.42) 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; display: grid; place-items: center; overflow: hidden; }
+    .gallery-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .gallery-body { padding: 12px 14px 14px; display: grid; gap: 10px; }
+    .gallery-name { margin: 0; color: #f6f6fb; font-size: 16px; line-height: 1.35; font-weight: 800; overflow-wrap: anywhere; }
+    .gallery-meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 13px; line-height: 1.3; }
+    .gallery-badge { border: 1px solid #5a5c66; border-radius: 999px; padding: 3px 8px; }
+    .gallery-badge.is-used { border-color: rgba(103,224,182,.72); color: var(--accent); }
+    .gallery-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .gallery-action { width: 38px; height: 36px; border: 1px solid #61636d; border-radius: 7px; background: #34343c; color: #f3f3f7; display: grid; place-items: center; cursor: pointer; }
+    .gallery-action:hover { border-color: rgba(103,224,182,.72); color: var(--accent); }
+    .gallery-action[data-action="delete-asset"]:hover { border-color: rgba(231,125,130,.74); color: var(--danger); }
+    .gallery-action:disabled { opacity: .42; cursor: default; }
+    .gallery-action iconify-icon { font-size: 21px; }
+    .gallery-empty { display: none; border: 1px dashed #62636e; border-radius: 14px; color: var(--muted); padding: 28px; text-align: center; }
+    .gallery-empty.is-visible { display: block; }
     .color-row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; }
     .field input[type="color"] { min-height: 56px; padding: 6px; cursor: pointer; }
     .secondary-button { min-height: 58px; border: 1px solid #73737d; border-radius: 7px; background: #3d3d45; color: #f3f3f7; padding: 0 18px; font-size: 22px; cursor: pointer; }
@@ -1207,6 +1230,11 @@ const indexTemplate = `<!doctype html>
       .field.full { grid-column: auto; }
       .field label { font-size: 17px; }
       .field input, .field textarea, .field select { min-height: 50px; font-size: 16px; }
+      .icon-field-row { grid-template-columns: 1fr; }
+      .gallery-toolbar { align-items: stretch; }
+      .gallery-tabs, .gallery-toolbar .upload-button { width: 100%; }
+      .gallery-tab { flex: 1 1 0; padding: 0 10px; }
+      .gallery-grid { grid-template-columns: 1fr; }
       .group-form-row, .group-row { grid-template-columns: 1fr; align-items: stretch; }
       .group-row-actions { justify-content: flex-end; flex-wrap: wrap; }
       .color-row { grid-template-columns: 70px 1fr; }
@@ -1220,6 +1248,7 @@ const indexTemplate = `<!doctype html>
 	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon></button>
 	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理"><iconify-icon icon="mdi:folder-cog-outline"></iconify-icon></button>
+	    <button class="tool-button" type="button" id="open-gallery-button" title="图库"><iconify-icon icon="mdi:image-multiple-outline"></iconify-icon></button>
 	    <button class="tool-button" type="button" id="open-settings-button" title="页面设置"><iconify-icon icon="mdi:image-edit-outline"></iconify-icon></button>
     {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录"><iconify-icon icon="mdi:logout"></iconify-icon></button></form>{{end}}
   </div>
@@ -1277,7 +1306,7 @@ const indexTemplate = `<!doctype html>
           <div class="field"><label>名称 *</label><input name="name" maxlength="80" required></div>
           <div class="field"><label>描述</label><input name="description" maxlength="140"></div>
           <div class="field"><label>图标文字</label><input name="icon_text" maxlength="12" placeholder="NAS"></div>
-          <div class="field"><label>在线图标名或图片 URL <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noreferrer">在线图标库</a></label><div class="icon-field-row"><input name="icon" placeholder="mdi:nas"><button class="upload-button" type="button" id="upload-icon-button">上传图片</button></div><input class="file-input" id="upload-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"></div>
+          <div class="field"><label>在线图标名或图片 URL <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noreferrer">在线图标库</a></label><div class="icon-field-row"><input name="icon" placeholder="mdi:nas"><button class="upload-button" type="button" id="open-icon-gallery-button">图库</button><button class="upload-button" type="button" id="upload-icon-button">上传图片</button></div><input class="file-input" id="upload-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon"></div>
           <div class="field full"><label>外网入口</label><input name="external_url" type="url" placeholder="https://example.com"></div>
           <div class="field full"><label>内网入口</label><input name="internal_url" type="url" placeholder="http://192.168.x.x:8080"></div>
           <div class="field"><label>分组</label><select name="group_id">{{range .Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
@@ -1300,12 +1329,28 @@ const indexTemplate = `<!doctype html>
       <form id="settings-form">
         <div class="form-grid">
           <div class="field"><label>背景颜色</label><div class="color-row"><input name="background_color_picker" type="color"><input name="background_color" placeholder="#000000"></div></div>
-          <div class="field"><label>背景图片</label><div class="icon-field-row"><input name="background_image" placeholder="/uploads/background.png 或 https://example.com/bg.jpg"><button class="upload-button" type="button" id="upload-background-button">上传图片</button></div><input class="file-input" id="upload-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>
+          <div class="field"><label>背景图片</label><div class="icon-field-row"><input name="background_image" placeholder="/uploads/background.png 或 https://example.com/bg.jpg"><button class="upload-button" type="button" id="open-background-gallery-button">图库</button><button class="upload-button" type="button" id="upload-background-button">上传图片</button></div><input class="file-input" id="upload-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"></div>
         </div>
         <div class="form-actions"><button class="secondary-button" type="button" id="reset-background-button">恢复默认</button><button class="save-button" type="submit">保存</button></div>
 	      </form>
 	    </section>
 	  </div>
+  <div class="modal-backdrop" id="gallery-backdrop">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-title">
+      <div class="modal-head"><h2 class="modal-title" id="gallery-title">图库</h2><button class="close-button" type="button" id="gallery-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
+      <div class="gallery-toolbar">
+        <div class="gallery-tabs" role="tablist" aria-label="图库筛选">
+          <button class="gallery-tab is-active" type="button" data-gallery-filter="all">全部</button>
+          <button class="gallery-tab" type="button" data-gallery-filter="wallpaper">壁纸</button>
+          <button class="gallery-tab" type="button" data-gallery-filter="icon">图标</button>
+        </div>
+        <button class="upload-button" type="button" id="gallery-upload-button"><iconify-icon icon="mdi:upload"></iconify-icon> 上传</button>
+        <input class="file-input" id="gallery-upload-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon">
+      </div>
+      <div class="gallery-empty" id="gallery-empty">暂无可用图片资源。</div>
+      <div class="gallery-grid" id="gallery-grid"></div>
+    </section>
+  </div>
   <div class="modal-backdrop" id="groups-backdrop">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="groups-title">
       <div class="modal-head"><h2 class="modal-title" id="groups-title">分组管理</h2><button class="close-button" type="button" id="groups-close" aria-label="关闭"><iconify-icon icon="mdi:close"></iconify-icon></button></div>
@@ -1353,6 +1398,7 @@ const indexTemplate = `<!doctype html>
     const menu = document.querySelector('#item-menu');
 	    const backdrop = document.querySelector('#edit-backdrop');
 	    const settingsBackdrop = document.querySelector('#settings-backdrop');
+	    const galleryBackdrop = document.querySelector('#gallery-backdrop');
 	    const groupsBackdrop = document.querySelector('#groups-backdrop');
 	    const deleteConfirmBackdrop = document.querySelector('#delete-confirm-backdrop');
 	    const form = document.querySelector('#edit-form');
@@ -1364,6 +1410,12 @@ const indexTemplate = `<!doctype html>
     const uploadFile = document.querySelector('#upload-icon-file');
     const uploadBackgroundButton = document.querySelector('#upload-background-button');
     const uploadBackgroundFile = document.querySelector('#upload-background-file');
+    const openIconGalleryButton = document.querySelector('#open-icon-gallery-button');
+    const openBackgroundGalleryButton = document.querySelector('#open-background-gallery-button');
+    const galleryUploadButton = document.querySelector('#gallery-upload-button');
+    const galleryUploadFile = document.querySelector('#gallery-upload-file');
+    const galleryGrid = document.querySelector('#gallery-grid');
+    const galleryEmpty = document.querySelector('#gallery-empty');
     const settingsPreview = document.querySelector('#settings-preview');
     const editTitle = document.querySelector('#edit-title');
     const saveButton = form.querySelector('.save-button');
@@ -1389,6 +1441,9 @@ const indexTemplate = `<!doctype html>
 	    const sortAnimations = new WeakMap();
 	    let groupSortDirty = false;
 	    let groupSortSaving = false;
+	    let galleryAssets = [];
+	    let galleryFilter = 'all';
+	    let galleryMode = 'browse';
 	    let dragState = null;
 	    let suppressNextEditClick = false;
 	    let pendingDelete = null;
@@ -1588,6 +1643,120 @@ const indexTemplate = `<!doctype html>
       settingsBackdrop.classList.add('is-open');
 	    }
 	    function closeSettings() { settingsBackdrop.classList.remove('is-open'); }
+	    function assetTypeLabel(type) {
+	      if (type === 'wallpaper') return '壁纸';
+	      if (type === 'icon') return '图标';
+	      return '图片';
+	    }
+	    function formatBytes(size) {
+	      if (!Number.isFinite(size) || size <= 0) return '0 B';
+	      if (size < 1024) return size + ' B';
+	      if (size < 1024 * 1024) return (size / 1024).toFixed(size < 10 * 1024 ? 1 : 0) + ' KB';
+	      return (size / 1024 / 1024).toFixed(1) + ' MB';
+	    }
+	    function galleryVisibleAssets() {
+	      return galleryAssets.filter(asset => galleryFilter === 'all' || asset.type === galleryFilter);
+	    }
+	    function renderGallery() {
+	      const visible = galleryVisibleAssets();
+	      galleryGrid.innerHTML = visible.map(asset => {
+	        const dims = asset.width && asset.height ? asset.width + 'x' + asset.height : '';
+	        const used = Array.isArray(asset.used_by) && asset.used_by.length ? asset.used_by.join('，') : '';
+	        const canUseIcon = galleryMode === 'icon';
+	        const canUseBackground = galleryMode === 'background' || galleryMode === 'browse';
+	        return '<article class="gallery-card" data-url="' + escapeHTML(asset.url) + '" data-type="' + escapeHTML(asset.type) + '">' +
+	          '<div class="gallery-thumb"><img src="' + escapeHTML(asset.url) + '" alt=""></div>' +
+	          '<div class="gallery-body">' +
+	            '<p class="gallery-name">' + escapeHTML(asset.name || asset.url) + '</p>' +
+	            '<div class="gallery-meta">' +
+	              '<span class="gallery-badge">' + assetTypeLabel(asset.type) + '</span>' +
+	              '<span class="gallery-badge">' + formatBytes(Number(asset.size || 0)) + '</span>' +
+	              (dims ? '<span class="gallery-badge">' + escapeHTML(dims) + '</span>' : '') +
+	              (used ? '<span class="gallery-badge is-used" title="' + escapeHTML(used) + '">使用中</span>' : '') +
+	            '</div>' +
+	            '<div class="gallery-actions">' +
+	              '<button class="gallery-action" type="button" data-action="copy-asset" title="复制路径"><iconify-icon icon="mdi:content-copy"></iconify-icon></button>' +
+	              (canUseIcon ? '<button class="gallery-action" type="button" data-action="use-icon-asset" title="填入图标"><iconify-icon icon="mdi:image-plus-outline"></iconify-icon></button>' : '') +
+	              (canUseBackground ? '<button class="gallery-action" type="button" data-action="use-background-asset" title="设为背景"><iconify-icon icon="mdi:wallpaper"></iconify-icon></button>' : '') +
+	              '<button class="gallery-action" type="button" data-action="delete-asset" title="' + (used ? '资源使用中' : '删除资源') + '"' + (used ? ' disabled' : '') + '><iconify-icon icon="mdi:trash-can-outline"></iconify-icon></button>' +
+	            '</div>' +
+	          '</div>' +
+	        '</article>';
+	      }).join('');
+	      galleryEmpty.textContent = galleryAssets.length ? '当前筛选下没有图片资源。' : '暂无可用图片资源。';
+	      galleryEmpty.classList.toggle('is-visible', visible.length === 0);
+	    }
+	    async function loadGallery() {
+	      galleryGrid.innerHTML = '';
+	      galleryEmpty.textContent = '正在读取图库...';
+	      galleryEmpty.classList.add('is-visible');
+	      const response = await fetch('/api/assets', { cache: 'no-store' });
+	      const payload = await response.json().catch(() => ({}));
+	      if (!response.ok) {
+	        galleryAssets = [];
+	        galleryEmpty.textContent = payload.error || '读取图库失败';
+	        galleryEmpty.classList.add('is-visible');
+	        return;
+	      }
+	      galleryAssets = Array.isArray(payload.assets) ? payload.assets : [];
+	      renderGallery();
+	    }
+	    function setGalleryFilter(value) {
+	      galleryFilter = value === 'wallpaper' || value === 'icon' ? value : 'all';
+	      for (const tab of document.querySelectorAll('.gallery-tab')) tab.classList.toggle('is-active', tab.dataset.galleryFilter === galleryFilter);
+	      renderGallery();
+	    }
+	    function openGallery(mode = 'browse') {
+	      galleryMode = mode;
+	      if (mode === 'icon') setGalleryFilter('icon');
+	      else if (mode === 'background') setGalleryFilter('wallpaper');
+	      else setGalleryFilter('all');
+	      galleryBackdrop.classList.add('is-open');
+	      loadGallery();
+	    }
+	    function closeGallery() { galleryBackdrop.classList.remove('is-open'); }
+	    async function setBackgroundImageFromAsset(asset) {
+	      const payload = {
+	        background_color: document.body.dataset.backgroundColor || '#000000',
+	        background_image: asset.url
+	      };
+	      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+	      const result = await response.json().catch(() => ({}));
+	      if (!response.ok) {
+	        showToast(result.error || '设置背景失败');
+	        return;
+	      }
+	      document.body.dataset.backgroundColor = payload.background_color;
+	      document.body.dataset.backgroundImage = payload.background_image;
+	      applyBodyBackground(payload.background_color, payload.background_image);
+	      if (settingsBackdrop.classList.contains('is-open')) {
+	        settingField('background_image').value = payload.background_image;
+	        applyBackgroundPreview(payload.background_color, payload.background_image, settingsPreview);
+	      }
+	      showToast('背景已更新');
+	      await loadGallery();
+	    }
+	    async function uploadGalleryAsset(file) {
+	      if (!file) return;
+	      const formData = new FormData();
+	      formData.append('file', file);
+	      galleryUploadButton.disabled = true;
+	      galleryUploadButton.textContent = '上传中';
+	      try {
+	        const response = await fetch('/api/uploads', { method: 'POST', body: formData });
+	        const payload = await response.json().catch(() => ({}));
+	        if (!response.ok) {
+	          showToast(payload.error || '上传失败');
+	          return;
+	        }
+	        showToast('图片已上传');
+	        await loadGallery();
+	      } finally {
+	        galleryUploadButton.disabled = false;
+	        galleryUploadButton.innerHTML = '<iconify-icon icon="mdi:upload"></iconify-icon> 上传';
+	        galleryUploadFile.value = '';
+	      }
+	    }
 	    function openGroups() {
 	      refreshGroupMoveButtons();
 	      groupsBackdrop.classList.add('is-open');
@@ -1679,8 +1848,12 @@ const indexTemplate = `<!doctype html>
 	    }
 	    async function copyText(value) {
 	      if (!value) return showToast('没有可复制的链接');
-	      await navigator.clipboard.writeText(value);
-      showToast('链接已复制');
+	      try {
+	        await navigator.clipboard.writeText(value);
+	        showToast('链接已复制');
+	      } catch (_) {
+	        showToast('复制失败，请手动复制');
+	      }
     }
     async function refreshStatus() {
       try {
@@ -1733,10 +1906,11 @@ const indexTemplate = `<!doctype html>
 	      if (!id) return;
 	      pendingDelete = { id, type, name: name || (type === 'group' ? '当前分组' : '当前入口') };
 	      const isGroup = pendingDelete.type === 'group';
-	      deleteConfirmTitle.textContent = isGroup ? '删除分组' : '删除导航入口';
-	      deleteConfirmDescription.firstChild.nodeValue = isGroup ? '确定删除分组 ' : '确定删除导航入口 ';
+	      const isAsset = pendingDelete.type === 'asset';
+	      deleteConfirmTitle.textContent = isAsset ? '删除图库资源' : (isGroup ? '删除分组' : '删除导航入口');
+	      deleteConfirmDescription.firstChild.nodeValue = isAsset ? '确定删除图库资源 ' : (isGroup ? '确定删除分组 ' : '确定删除导航入口 ');
 	      deleteConfirmName.textContent = '“' + pendingDelete.name + '”';
-	      deleteConfirmNote.textContent = isGroup ? '只能删除空分组；含有入口的分组需要先移动或删除入口。' : '只会从导航配置里移除入口，不会删除、停止或重启真实服务。';
+	      deleteConfirmNote.textContent = isAsset ? '只会删除 uploads 目录内的图片文件；正在被背景或入口图标引用的资源不能删除。' : (isGroup ? '只能删除空分组；含有入口的分组需要先移动或删除入口。' : '只会从导航配置里移除入口，不会删除、停止或重启真实服务。');
 	      confirmDeleteButton.disabled = false;
 	      confirmDeleteButton.textContent = '删除';
 	      deleteConfirmBackdrop.classList.add('is-open');
@@ -1754,17 +1928,23 @@ const indexTemplate = `<!doctype html>
 	      if (!pendingDelete?.id) return;
 	      const id = pendingDelete.id;
 	      const isGroup = pendingDelete.type === 'group';
+	      const isAsset = pendingDelete.type === 'asset';
 	      confirmDeleteButton.disabled = true;
 	      confirmDeleteButton.textContent = '删除中';
-	      const response = await fetch((isGroup ? '/api/groups/' : '/api/services/') + encodeURIComponent(id), { method: 'DELETE' });
+	      const response = await fetch(isAsset ? '/api/assets?url=' + encodeURIComponent(id) : ((isGroup ? '/api/groups/' : '/api/services/') + encodeURIComponent(id)), { method: 'DELETE' });
 	      if (!response.ok) {
-	        const error = await response.json().catch(() => ({ error: isGroup ? '删除分组失败' : '删除失败' }));
-	        showToast(error.error || (isGroup ? '删除分组失败' : '删除失败'));
+	        const error = await response.json().catch(() => ({ error: isAsset ? '删除资源失败' : (isGroup ? '删除分组失败' : '删除失败') }));
+	        showToast(error.error || (isAsset ? '删除资源失败' : (isGroup ? '删除分组失败' : '删除失败')));
 	        confirmDeleteButton.disabled = false;
 	        confirmDeleteButton.textContent = '删除';
 	        return;
 	      }
-	      showToast(isGroup ? '分组已删除' : '已删除');
+	      showToast(isAsset ? '资源已删除' : (isGroup ? '分组已删除' : '已删除'));
+	      closeDeleteConfirm();
+	      if (isAsset) {
+	        await loadGallery();
+	        return;
+	      }
 	      setTimeout(() => location.reload(), 500);
 	    }
 	    async function deleteItem() {
@@ -2206,10 +2386,15 @@ const indexTemplate = `<!doctype html>
       if (button.dataset.action === 'delete-group') openDeleteConfirm(row?.dataset.groupId, row?.dataset.groupName, 'group');
     });
     document.querySelector('#open-settings-button').addEventListener('click', openSettings);
+    document.querySelector('#open-gallery-button').addEventListener('click', () => openGallery('browse'));
+    openIconGalleryButton.addEventListener('click', () => openGallery('icon'));
+    openBackgroundGalleryButton.addEventListener('click', () => openGallery('background'));
+    document.querySelector('#gallery-close').addEventListener('click', closeGallery);
     document.querySelector('#edit-close').addEventListener('click', closeEdit);
     document.querySelector('#settings-close').addEventListener('click', closeSettings);
     backdrop.addEventListener('click', event => { if (event.target === backdrop) closeEdit(); });
     settingsBackdrop.addEventListener('click', event => { if (event.target === settingsBackdrop) closeSettings(); });
+    galleryBackdrop.addEventListener('click', event => { if (event.target === galleryBackdrop) closeGallery(); });
     groupsBackdrop.addEventListener('click', event => { if (event.target === groupsBackdrop) closeGroups(); });
     deleteConfirmBackdrop.addEventListener('click', event => { if (event.target === deleteConfirmBackdrop) closeDeleteConfirm(); });
     cancelDeleteButton.addEventListener('click', closeDeleteConfirm);
@@ -2228,6 +2413,26 @@ const indexTemplate = `<!doctype html>
       const value = settingField('background_color').value;
       if (/^#[0-9a-fA-F]{6}$/.test(value)) settingField('background_color_picker').value = value;
     });
+    document.querySelector('.gallery-tabs').addEventListener('click', event => {
+      const tab = event.target.closest('[data-gallery-filter]');
+      if (tab) setGalleryFilter(tab.dataset.galleryFilter);
+    });
+    galleryGrid.addEventListener('click', async event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const card = button.closest('.gallery-card');
+      const asset = galleryAssets.find(item => item.url === card?.dataset.url);
+      if (!asset) return;
+      if (button.dataset.action === 'copy-asset') await copyText(asset.url);
+      if (button.dataset.action === 'use-icon-asset') {
+        field('icon').value = asset.url;
+        refreshPreview();
+        closeGallery();
+        showToast('图标路径已填入');
+      }
+      if (button.dataset.action === 'use-background-asset') await setBackgroundImageFromAsset(asset);
+      if (button.dataset.action === 'delete-asset') openDeleteConfirm(asset.url, asset.name || asset.url, 'asset');
+    });
     document.querySelector('#reset-background-button').addEventListener('click', () => {
       settingField('background_color').value = '#000000';
       settingField('background_color_picker').value = '#000000';
@@ -2238,6 +2443,8 @@ const indexTemplate = `<!doctype html>
     uploadFile.addEventListener('change', () => uploadIcon(uploadFile.files?.[0]));
     uploadBackgroundButton.addEventListener('click', () => uploadBackgroundFile.click());
     uploadBackgroundFile.addEventListener('change', () => uploadBackground(uploadBackgroundFile.files?.[0]));
+    galleryUploadButton.addEventListener('click', () => galleryUploadFile.click());
+    galleryUploadFile.addEventListener('change', () => uploadGalleryAsset(galleryUploadFile.files?.[0]));
     searchInput.addEventListener('input', applyFilters);
     updateClock(); setInterval(updateClock, 1000);
     setAccessMode(savedAccessMode(), false);
@@ -2366,8 +2573,7 @@ const loginTemplate = `<!doctype html>
   </div>
   <main>
     <div>
-      <h1>{{.Title}}</h1>
-      <p class="subtitle">请登录后查看个人服务导航。</p>
+      <p class="subtitle">请登录后查看。</p>
     </div>
     <form method="post" action="/login?return_to={{.ReturnTo}}">
       {{if .Error}}<p class="error">{{.Error}}</p>{{end}}

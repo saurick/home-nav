@@ -75,6 +75,8 @@ docker compose -f deploy/docker-compose.yml up -d
 - `appearance.background_color` 和 `appearance.background_image` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL。
 - 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把图标目录挂载到容器内；编辑页上传图片也会写入这个目录。真实上传图标目录不要提交到仓库。
 - 页面设置里的背景图上传复用 `assets.uploads_dir`，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。
+- 页面支持图库管理：可以查看、筛选、上传、复制和删除 `assets.uploads_dir` 下的图片资源，并可从图库回填入口图标或设置页面背景。
+- 图库删除只会删除 uploads 目录内的图片文件；如果资源正在被页面背景或入口图标引用，后端会拒绝删除，避免留下失效引用。
 - 如果服务图标使用 `mdi:nas` 这类在线图标名，服务端会通过 Iconify API 拉取 SVG。生产环境建议配置 `assets.icon_cache_dir` 并持久化挂载，避免每次重建后重新拉取。
 
 真实生产部署建议：
