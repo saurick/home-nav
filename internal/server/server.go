@@ -822,6 +822,7 @@ const indexTemplate = `<!doctype html>
 	    body.is-edit-mode .app-icon { cursor: grab; touch-action: none; }
 	    body.is-dragging, body.is-dragging * { user-select: none; }
 	    body.is-dragging .app-icon { cursor: grabbing; }
+	    body.is-dragging .app-icon:not(.is-dragging) { will-change: transform; }
 	    .app-icon.is-dragging { position: fixed; left: 0; top: 0; z-index: 70; opacity: .96; pointer-events: none; filter: drop-shadow(0 22px 34px rgba(0,0,0,.46)); transform: translate3d(0,0,0); will-change: transform; }
 	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: #242424; }
 	    .drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }
@@ -1070,6 +1071,8 @@ const indexTemplate = `<!doctype html>
     let editMode = false;
     let accessMode = 'external';
     let sortDirty = false;
+    let sortSaving = false;
+    let sortSaveQueued = false;
     let dragState = null;
     let suppressNextEditClick = false;
     let pendingDelete = null;
@@ -1160,7 +1163,7 @@ const indexTemplate = `<!doctype html>
 	      editMode = value;
 	      document.body.classList.toggle('is-edit-mode', editMode);
 	      for (const button of document.querySelectorAll('.edit-mode-button')) button.classList.toggle('is-active', editMode);
-	      saveSortButton.disabled = !sortDirty;
+	      saveSortButton.disabled = sortSaving || !sortDirty;
 	      showToast(editMode ? '编辑模式已开启' : (sortDirty ? '编辑模式已关闭，排序未保存' : '编辑模式已关闭'));
 	    }
 	    function suppressEditClickOnce() {
@@ -1169,7 +1172,7 @@ const indexTemplate = `<!doctype html>
 	    }
 	    function setSortDirty(value) {
 	      sortDirty = value;
-	      saveSortButton.disabled = !sortDirty;
+	      saveSortButton.disabled = sortSaving || !sortDirty;
 	    }
     function resetServiceForm(groupID) {
       editTitle.textContent = '新增入口';
@@ -1382,23 +1385,43 @@ const indexTemplate = `<!doctype html>
 	        }))
 	      };
 	    }
-	    async function saveSort() {
-	      if (!sortDirty) return;
-	      saveSortButton.disabled = true;
-	      const response = await fetch('/api/services/sort', {
-	        method: 'PUT',
-	        headers: { 'Content-Type': 'application/json' },
-	        body: JSON.stringify(sortPayload())
-	      });
-	      if (!response.ok) {
-	        const error = await response.json().catch(() => ({ error: '保存排序失败' }));
-	        showToast(error.error || '保存排序失败');
-	        saveSortButton.disabled = false;
+	    async function saveSort(options = {}) {
+	      if (sortSaving) {
+	        sortSaveQueued = true;
 	        return;
 	      }
-	      setSortDirty(false);
-	      showToast('排序已保存');
-	      setTimeout(() => location.reload(), 500);
+	      if (!sortDirty) return;
+	      const payload = sortPayload();
+	      const payloadText = JSON.stringify(payload);
+	      sortSaving = true;
+	      saveSortButton.disabled = true;
+	      try {
+	        const response = await fetch('/api/services/sort', {
+	          method: 'PUT',
+	          headers: { 'Content-Type': 'application/json' },
+	          body: payloadText
+	        });
+	        if (!response.ok) {
+	          const error = await response.json().catch(() => ({ error: '保存排序失败' }));
+	          showToast(error.error || '保存排序失败');
+	          setSortDirty(true);
+	          return;
+	        }
+	        if (JSON.stringify(sortPayload()) === payloadText) {
+	          setSortDirty(false);
+	          if (!options.quiet) showToast('排序已保存');
+	        } else {
+	          setSortDirty(true);
+	          sortSaveQueued = true;
+	        }
+	      } finally {
+	        sortSaving = false;
+	        saveSortButton.disabled = !sortDirty;
+	      }
+	      if (sortSaveQueued) {
+	        sortSaveQueued = false;
+	        if (sortDirty) saveSort(options);
+	      }
 	    }
     async function uploadIcon(file) {
       if (!file) return;
@@ -1504,7 +1527,7 @@ const indexTemplate = `<!doctype html>
 	        for (const node of moved) {
 	          const token = String(Date.now()) + Math.random();
 	          node.dataset.sortAnimationToken = token;
-	          node.style.transition = 'transform 150ms cubic-bezier(.2,0,.2,1)';
+	          node.style.transition = 'transform 180ms cubic-bezier(.22,1,.36,1)';
 	          node.style.transform = 'translate3d(0,0,0)';
 	          window.setTimeout(() => {
 	            if (node.classList.contains('is-dragging')) return;
@@ -1512,7 +1535,7 @@ const indexTemplate = `<!doctype html>
 	            delete node.dataset.sortAnimationToken;
 	            node.style.transition = '';
 	            node.style.transform = '';
-	          }, 180);
+	          }, 220);
 	        }
 	      });
 	    }
@@ -1595,7 +1618,10 @@ const indexTemplate = `<!doctype html>
 	        const group = state.item.closest('.group');
 	        if (group) state.item.dataset.groupId = group.dataset.groupId || '';
 	        suppressEditClickOnce();
-	        if (JSON.stringify(sortPayload()) !== state.startOrder) setSortDirty(true);
+	        if (JSON.stringify(sortPayload()) !== state.startOrder) {
+	          setSortDirty(true);
+	          saveSort();
+	        }
 	        applyFilters();
 	      }
 	    }
@@ -1740,7 +1766,7 @@ const indexTemplate = `<!doctype html>
     });
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
 	    accessModeButton.addEventListener('click', toggleAccessMode);
-	    saveSortButton.addEventListener('click', saveSort);
+	    saveSortButton.addEventListener('click', () => saveSort());
     document.querySelector('#open-settings-button').addEventListener('click', openSettings);
     document.querySelector('#edit-close').addEventListener('click', closeEdit);
     document.querySelector('#settings-close').addEventListener('click', closeSettings);
