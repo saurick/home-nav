@@ -1573,6 +1573,7 @@ const indexTemplate = `<!doctype html>
     .gallery-meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 13px; line-height: 1.3; }
     .gallery-badge { border: 1px solid #5a5c66; border-radius: 999px; padding: 3px 8px; }
     .gallery-badge.is-used { border-color: rgba(103,224,182,.72); color: var(--accent); }
+    .gallery-upload-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .gallery-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .gallery-action { width: 38px; height: 36px; border: 1px solid #61636d; border-radius: 7px; background: #34343c; color: #f3f3f7; display: grid; place-items: center; cursor: pointer; }
     .gallery-action:hover { border-color: rgba(103,224,182,.72); color: var(--accent); }
@@ -1611,7 +1612,8 @@ const indexTemplate = `<!doctype html>
       .field input, .field textarea, .field select { min-height: 50px; font-size: 16px; }
       .icon-field-row { grid-template-columns: 1fr; }
       .gallery-toolbar { align-items: stretch; }
-      .gallery-tabs, .gallery-toolbar .upload-button { width: 100%; }
+      .gallery-tabs, .gallery-toolbar .upload-button, .gallery-upload-actions { width: 100%; }
+      .gallery-upload-actions .upload-button { flex: 1 1 0; }
       .gallery-tab { flex: 1 1 0; padding: 0 10px; }
       .gallery-grid { grid-template-columns: 1fr; }
       .group-form-row, .group-row { grid-template-columns: 1fr; align-items: stretch; }
@@ -1717,7 +1719,10 @@ const indexTemplate = `<!doctype html>
           <button class="gallery-tab" type="button" data-gallery-filter="wallpaper">壁纸</button>
           <button class="gallery-tab" type="button" data-gallery-filter="icon">图标</button>
         </div>
-        <button class="upload-button" type="button" id="gallery-upload-button">{{icon "mdi:upload"}} 上传</button>
+        <div class="gallery-upload-actions">
+          <button class="upload-button" type="button" id="gallery-upload-icon-button" data-upload-type="icon">{{icon "mdi:upload"}} 上传图标</button>
+          <button class="upload-button" type="button" id="gallery-upload-wallpaper-button" data-upload-type="wallpaper">{{icon "mdi:upload"}} 上传壁纸</button>
+        </div>
         <input class="file-input" id="gallery-upload-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon">
       </div>
       <div class="gallery-empty" id="gallery-empty">暂无可用图片资源。</div>
@@ -1784,7 +1789,7 @@ const indexTemplate = `<!doctype html>
     const uploadBackgroundFile = document.querySelector('#upload-background-file');
     const openIconGalleryButton = document.querySelector('#open-icon-gallery-button');
     const openBackgroundGalleryButton = document.querySelector('#open-background-gallery-button');
-    const galleryUploadButton = document.querySelector('#gallery-upload-button');
+    const galleryUploadButtons = [...document.querySelectorAll('[data-upload-type]')];
     const galleryUploadFile = document.querySelector('#gallery-upload-file');
     const galleryGrid = document.querySelector('#gallery-grid');
     const galleryEmpty = document.querySelector('#gallery-empty');
@@ -1816,6 +1821,7 @@ const indexTemplate = `<!doctype html>
 	    let galleryAssets = [];
 	    let galleryFilter = 'all';
 	    let galleryMode = 'browse';
+	    let galleryPendingUploadType = 'icon';
 	    let dragState = null;
 	    let suppressNextEditClick = false;
 	    let pendingDelete = null;
@@ -2034,7 +2040,7 @@ const indexTemplate = `<!doctype html>
 	        const dims = asset.width && asset.height ? asset.width + 'x' + asset.height : '';
 	        const used = Array.isArray(asset.used_by) && asset.used_by.length ? asset.used_by.join('，') : '';
 	        const canUseIcon = galleryMode === 'icon';
-	        const canUseBackground = galleryMode === 'background' || galleryMode === 'browse';
+	        const canUseBackground = galleryMode === 'background';
 	        return '<article class="gallery-card" data-url="' + escapeHTML(asset.url) + '" data-type="' + escapeHTML(asset.type) + '">' +
 	          '<div class="gallery-thumb"><img src="' + escapeHTML(asset.url) + '" alt=""></div>' +
 	          '<div class="gallery-body">' +
@@ -2075,7 +2081,26 @@ const indexTemplate = `<!doctype html>
 	    function setGalleryFilter(value) {
 	      galleryFilter = value === 'wallpaper' || value === 'icon' ? value : 'all';
 	      for (const tab of document.querySelectorAll('.gallery-tab')) tab.classList.toggle('is-active', tab.dataset.galleryFilter === galleryFilter);
+	      updateGalleryUploadControls();
 	      renderGallery();
+	    }
+	    function setGalleryUploadButtonState(disabled) {
+	      for (const button of galleryUploadButtons) button.disabled = disabled;
+	    }
+	    function resetGalleryUploadButtonLabels() {
+	      for (const button of galleryUploadButtons) {
+	        const type = button.dataset.uploadType;
+	        if (galleryMode === 'icon') button.innerHTML = '{{icon "mdi:upload"}} 上传并填入图标';
+	        else if (galleryMode === 'background') button.innerHTML = '{{icon "mdi:upload"}} 上传并设为背景';
+	        else button.innerHTML = type === 'wallpaper' ? '{{icon "mdi:upload"}} 上传壁纸' : '{{icon "mdi:upload"}} 上传图标';
+	      }
+	    }
+	    function updateGalleryUploadControls() {
+	      for (const button of galleryUploadButtons) {
+	        const type = button.dataset.uploadType;
+	        button.hidden = (galleryMode === 'icon' && type !== 'icon') || (galleryMode === 'background' && type !== 'wallpaper');
+	      }
+	      resetGalleryUploadButtonLabels();
 	    }
 	    function openGallery(mode = 'browse') {
 	      galleryMode = mode;
@@ -2110,12 +2135,15 @@ const indexTemplate = `<!doctype html>
 	      showToast('背景已更新');
 	      await loadGallery();
 	    }
-	    async function uploadGalleryAsset(file) {
+	    async function uploadGalleryAsset(file, assetType) {
 	      if (!file) return;
 	      const formData = new FormData();
 	      formData.append('file', file);
-	      galleryUploadButton.disabled = true;
-	      galleryUploadButton.textContent = '上传中';
+	      formData.append('asset_type', assetType);
+	      setGalleryUploadButtonState(true);
+	      for (const button of galleryUploadButtons) {
+	        if (button.dataset.uploadType === assetType) button.textContent = '上传中';
+	      }
 	      try {
 	        const response = await fetch('/api/uploads', { method: 'POST', body: formData });
 	        const payload = await response.json().catch(() => ({}));
@@ -2123,11 +2151,24 @@ const indexTemplate = `<!doctype html>
 	          showToast(payload.error || '上传失败');
 	          return;
 	        }
-	        showToast('图片已上传');
+	        const uploaded = { url: payload.url || '', type: assetType };
+	        if (galleryMode === 'icon') {
+	          field('icon').value = uploaded.url;
+	          refreshPreview();
+	          closeGallery();
+	          showToast('图标已上传并填入');
+	          return;
+	        }
+	        if (galleryMode === 'background') {
+	          await setBackgroundImageFromAsset(uploaded);
+	          closeGallery();
+	          return;
+	        }
+	        showToast(assetType === 'wallpaper' ? '壁纸已上传' : '图标已上传');
 	        await loadGallery();
 	      } finally {
-	        galleryUploadButton.disabled = false;
-	        galleryUploadButton.innerHTML = '{{icon "mdi:upload"}} 上传';
+	        setGalleryUploadButtonState(false);
+	        resetGalleryUploadButtonLabels();
 	        galleryUploadFile.value = '';
 	      }
 	    }
@@ -2394,6 +2435,7 @@ const indexTemplate = `<!doctype html>
       if (!file) return;
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('asset_type', 'icon');
       uploadButton.disabled = true;
       uploadButton.textContent = '上传中';
       try {
@@ -2416,6 +2458,7 @@ const indexTemplate = `<!doctype html>
       if (!file) return;
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('asset_type', 'wallpaper');
       uploadBackgroundButton.disabled = true;
       uploadBackgroundButton.textContent = '上传中';
       try {
@@ -2815,8 +2858,13 @@ const indexTemplate = `<!doctype html>
     uploadFile.addEventListener('change', () => uploadIcon(uploadFile.files?.[0]));
     uploadBackgroundButton.addEventListener('click', () => uploadBackgroundFile.click());
     uploadBackgroundFile.addEventListener('change', () => uploadBackground(uploadBackgroundFile.files?.[0]));
-    galleryUploadButton.addEventListener('click', () => galleryUploadFile.click());
-    galleryUploadFile.addEventListener('change', () => uploadGalleryAsset(galleryUploadFile.files?.[0]));
+    for (const button of galleryUploadButtons) {
+      button.addEventListener('click', () => {
+        galleryPendingUploadType = button.dataset.uploadType === 'wallpaper' ? 'wallpaper' : 'icon';
+        galleryUploadFile.click();
+      });
+    }
+    galleryUploadFile.addEventListener('change', () => uploadGalleryAsset(galleryUploadFile.files?.[0], galleryPendingUploadType));
     setAccessMode(savedAccessMode(), false);
     updateGroupCounts(); refreshStatus(); setInterval(refreshStatus, 30000);
   </script>

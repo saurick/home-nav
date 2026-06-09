@@ -79,6 +79,12 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	assetType, err := uploadAssetType(r.FormValue("asset_type"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	ext, err := uploadImageExt(header.Filename, body)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -91,7 +97,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "生成文件名失败")
 		return
 	}
-	relDir := filepath.Join(fmt.Sprintf("%04d", now.Year()), fmt.Sprintf("%d", int(now.Month())), fmt.Sprintf("%d", now.Day()))
+	relDir := filepath.Join(uploadAssetDir(assetType), fmt.Sprintf("%04d", now.Year()), fmt.Sprintf("%d", int(now.Month())), fmt.Sprintf("%d", now.Day()))
 	dir := filepath.Join(cfg.Assets.UploadsDir, relDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "创建上传目录失败")
@@ -105,7 +111,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	publicPath := cfg.Assets.UploadsURLPrefix + strings.ReplaceAll(filepath.ToSlash(filepath.Join(relDir, name)), "//", "/")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]string{"url": publicPath})
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": publicPath, "type": assetType})
 }
 
 func (s *Server) handleAssets(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +210,30 @@ func uploadImageExt(filename string, body []byte) (string, error) {
 	return "", fmt.Errorf("仅支持 PNG、JPG、WEBP、GIF、SVG、ICO 图片")
 }
 
+func uploadAssetType(value string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "":
+		return "image", nil
+	case "icon":
+		return "icon", nil
+	case "wallpaper":
+		return "wallpaper", nil
+	default:
+		return "", fmt.Errorf("资源类型无效")
+	}
+}
+
+func uploadAssetDir(assetType string) string {
+	switch assetType {
+	case "icon":
+		return "icons"
+	case "wallpaper":
+		return "wallpapers"
+	default:
+		return ""
+	}
+}
+
 func looksLikeSVG(body []byte) bool {
 	text := strings.TrimSpace(strings.ToLower(string(body)))
 	return strings.HasPrefix(text, "<svg") || strings.Contains(text, "<svg ")
@@ -241,13 +271,14 @@ func listUploadAssets(cfg *Config) ([]AssetItem, error) {
 		if err != nil {
 			return err
 		}
-		publicURL := cfg.Assets.UploadsURLPrefix + strings.TrimPrefix(filepath.ToSlash(relPath), "/")
+		relPath = filepath.ToSlash(relPath)
+		publicURL := cfg.Assets.UploadsURLPrefix + strings.TrimPrefix(relPath, "/")
 		width, height := assetImageSize(filePath)
 		usedBy := assetUsage(cfg, publicURL)
 		items = append(items, AssetItem{
 			URL:     publicURL,
 			Name:    filepath.Base(filePath),
-			Type:    assetType(filePath, width, height, usedBy),
+			Type:    assetType(relPath, filePath, width, height, usedBy),
 			Size:    info.Size(),
 			ModTime: info.ModTime().Format(time.RFC3339),
 			Width:   width,
@@ -283,7 +314,7 @@ func assetUsage(cfg *Config, publicURL string) []string {
 	return usedBy
 }
 
-func assetType(filePath string, width, height int, usedBy []string) string {
+func assetType(relPath, filePath string, width, height int, usedBy []string) string {
 	for _, usage := range usedBy {
 		if usage == "页面背景" {
 			return "wallpaper"
@@ -291,6 +322,13 @@ func assetType(filePath string, width, height int, usedBy []string) string {
 		if strings.HasPrefix(usage, "入口图标: ") {
 			return "icon"
 		}
+	}
+	firstSegment := strings.Split(strings.TrimPrefix(filepath.ToSlash(relPath), "/"), "/")[0]
+	if firstSegment == "icons" {
+		return "icon"
+	}
+	if firstSegment == "wallpapers" {
+		return "wallpaper"
 	}
 	ext := strings.ToLower(filepath.Ext(filePath))
 	if ext == ".svg" || ext == ".ico" {

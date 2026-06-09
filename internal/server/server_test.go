@@ -256,7 +256,7 @@ func TestIndexIncludesGalleryControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"open-gallery-button\"", "id=\"gallery-backdrop\"", "id=\"gallery-grid\"", "data-gallery-filter=\"wallpaper\"", "data-gallery-filter=\"icon\"", "/api/assets", "delete-asset", "use-background-asset", "use-icon-asset"} {
+	for _, want := range []string{"id=\"open-gallery-button\"", "id=\"gallery-backdrop\"", "id=\"gallery-grid\"", "data-gallery-filter=\"wallpaper\"", "data-gallery-filter=\"icon\"", "data-upload-type=\"icon\"", "data-upload-type=\"wallpaper\"", "formData.append('asset_type', assetType)", "formData.append('asset_type', 'icon')", "formData.append('asset_type', 'wallpaper')", "/api/assets", "delete-asset", "use-background-asset", "use-icon-asset", "galleryMode === 'background'"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -948,6 +948,9 @@ groups:
 	if _, err := part.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)); err != nil {
 		t.Fatalf("write form file: %v", err)
 	}
+	if err := writer.WriteField("asset_type", "icon"); err != nil {
+		t.Fatalf("write asset type: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
@@ -967,7 +970,7 @@ groups:
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode upload response: %v", err)
 	}
-	if !strings.HasPrefix(payload.URL, "/uploads/") || !strings.HasSuffix(payload.URL, ".svg") {
+	if !strings.HasPrefix(payload.URL, "/uploads/icons/") || !strings.HasSuffix(payload.URL, ".svg") {
 		t.Fatalf("unexpected upload url: %q", payload.URL)
 	}
 
@@ -976,6 +979,69 @@ groups:
 	srv.ServeHTTP(assetRec, assetReq)
 	if assetRec.Code != http.StatusOK {
 		t.Fatalf("expected uploaded asset status %d, got %d", http.StatusOK, assetRec.Code)
+	}
+}
+
+func TestTypedUploadClassificationOverridesImageShape(t *testing.T) {
+	dir := t.TempDir()
+	srv, err := New(writeTempConfig(t, `
+title: 测试导航
+check_interval: 30s
+auth:
+  enabled: true
+  username: admin
+  password: test-password
+  session_secret: 0123456789abcdef0123456789abcdef
+  session_ttl: 24h
+assets:
+  uploads_dir: `+dir+`
+  uploads_url_prefix: /uploads/
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_url: http://app.example.local
+        health:
+          type: disabled
+`))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+
+	iconURL := uploadTestPNG(t, srv, cookie, "wide-icon.png", 1000, 500, "icon")
+	wallpaperURL := uploadTestPNG(t, srv, cookie, "square-wallpaper.png", 400, 400, "wallpaper")
+	if !strings.HasPrefix(iconURL, "/uploads/icons/") {
+		t.Fatalf("expected icon upload directory, got %q", iconURL)
+	}
+	if !strings.HasPrefix(wallpaperURL, "/uploads/wallpapers/") {
+		t.Fatalf("expected wallpaper upload directory, got %q", wallpaperURL)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/assets", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d: %s", http.StatusOK, listRec.Code, listRec.Body.String())
+	}
+	var listPayload struct {
+		Assets []AssetItem `json:"assets"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode asset list: %v", err)
+	}
+	byURL := make(map[string]AssetItem)
+	for _, asset := range listPayload.Assets {
+		byURL[asset.URL] = asset
+	}
+	if byURL[iconURL].Type != "icon" {
+		t.Fatalf("wide icon upload should remain icon, got %#v", byURL[iconURL])
+	}
+	if byURL[wallpaperURL].Type != "wallpaper" {
+		t.Fatalf("square wallpaper upload should remain wallpaper, got %#v", byURL[wallpaperURL])
 	}
 }
 
@@ -1316,6 +1382,55 @@ func writePNG(t *testing.T, path string, width, height int) {
 	if err := png.Encode(file, img); err != nil {
 		t.Fatalf("encode png: %v", err)
 	}
+}
+
+func uploadTestPNG(t *testing.T, srv *Server, cookie *http.Cookie, filename string, width, height int, assetType string) string {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+	var pngBody bytes.Buffer
+	if err := png.Encode(&pngBody, img); err != nil {
+		t.Fatalf("encode png upload: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write(pngBody.Bytes()); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.WriteField("asset_type", assetType); err != nil {
+		t.Fatalf("write asset type: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected upload status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if payload.URL == "" {
+		t.Fatal("expected upload url")
+	}
+	return payload.URL
 }
 
 func authTestConfig() string {

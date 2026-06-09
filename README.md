@@ -80,9 +80,9 @@ docker compose -f deploy/docker-compose.yml up -d
 - 页面支持分组管理：可以新增分组、重命名分组、调整分组顺序并删除空分组；含有入口的分组不能直接删除，需要先移动或删除入口。
 - 页面支持外网 / 内网访问模式切换；该偏好保存在浏览器本地，影响服务卡片左键默认打开的入口。
 - `appearance.background_color`、`appearance.background_image` 和 `appearance.background_overlay` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL；`background_overlay` 支持 `low`、`medium`、`high`，用于在不同明暗壁纸上保持图标和文字可读。
-- 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把图标目录挂载到容器内；编辑页上传图片也会写入这个目录。真实上传图标目录不要提交到仓库。
-- 页面设置里的背景图上传复用 `assets.uploads_dir`，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。
-- 页面支持图库管理：可以查看、筛选、上传、复制和删除 `assets.uploads_dir` 下的图片资源，并可从图库回填入口图标或设置页面背景。
+- 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把上传目录挂载到容器内；编辑页上传图标会写入 `icons/` 子目录。真实上传目录不要提交到仓库。
+- 页面设置里的背景图上传复用 `assets.uploads_dir`，新上传壁纸会写入 `wallpapers/` 子目录，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。
+- 页面支持图库管理：顶部图库可以查看、筛选、上传、复制和删除 `assets.uploads_dir` 下的图片资源；入口编辑里的图库用于回填入口图标，页面设置里的图库用于设置页面背景。旧资源会按当前引用、扩展名和尺寸兼容识别，新上传资源按上传时选择的图标或壁纸类型归类。
 - 图库删除只会删除 uploads 目录内的图片文件；如果资源正在被页面背景或入口图标引用，后端会拒绝删除，避免留下失效引用。
 - 如果服务图标使用 `mdi:nas` 这类在线图标名，服务端会通过 Iconify API 拉取 SVG。生产环境建议配置 `assets.icon_cache_dir` 并持久化挂载，避免每次重建后重新拉取。
 
