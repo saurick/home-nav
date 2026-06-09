@@ -240,6 +240,33 @@ func TestLoginIncludesAccessModeToggle(t *testing.T) {
 	}
 }
 
+func TestLoginDoesNotRenderVisibleTitle(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "<title>登录 - 测试导航</title>") {
+		t.Fatal("login should keep the configured browser title")
+	}
+	for _, unwanted := range []string{"<h1>测试导航</h1>", "请登录后查看个人服务导航。"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("login should not contain visible title text %q", unwanted)
+		}
+	}
+	if !strings.Contains(body, "请登录后查看。") {
+		t.Fatal("login should keep a generic prompt")
+	}
+}
+
 func TestAuthLoginFlow(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
