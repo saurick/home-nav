@@ -120,6 +120,9 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 			t.Fatalf("expected index to contain %q", want)
 		}
 	}
+	if !strings.Contains(body, ".drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }") {
+		t.Fatal("drag placeholder should reserve layout space without drawing a visible drop box")
+	}
 	if strings.Contains(body, "window.confirm") {
 		t.Fatal("index should use the in-page delete confirmation modal instead of window.confirm")
 	}

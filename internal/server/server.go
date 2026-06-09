@@ -824,7 +824,7 @@ const indexTemplate = `<!doctype html>
 	    body.is-dragging .app-icon { cursor: grabbing; }
 	    .app-icon.is-dragging { position: fixed; left: 0; top: 0; z-index: 70; opacity: .96; pointer-events: none; filter: drop-shadow(0 22px 34px rgba(0,0,0,.46)); transform: translate3d(0,0,0); will-change: transform; }
 	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: #242424; }
-	    .drag-placeholder { width: 100%; min-height: 122px; border-radius: 16px; outline: 2px dashed rgba(103,224,182,.38); outline-offset: -6px; background: rgba(103,224,182,.08); }
+	    .drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }
 	    .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
     .icon-button:hover { transform: translateY(-2px); background: #1f1f1f; }
     body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
@@ -920,7 +920,7 @@ const indexTemplate = `<!doctype html>
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
       .icon-button iconify-icon { font-size: 36px; }
       .app-name { width: 78px; font-size: 13px; }
-      .drag-placeholder { min-height: 109px; border-radius: 14px; }
+      .drag-placeholder { min-height: 109px; }
       .menu { left: 12px !important; right: 12px; top: auto !important; bottom: 12px; width: auto; }
       .modal { border-radius: 18px; padding: 22px 18px 24px; }
       .confirm-modal { padding: 22px 18px; border-radius: 16px; }
