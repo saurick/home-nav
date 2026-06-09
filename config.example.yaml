@@ -17,6 +17,7 @@ assets:
 appearance:
   background_color: "#000000"
   background_image: ""
+  background_overlay: "medium"
 
 groups:
   - id: ops

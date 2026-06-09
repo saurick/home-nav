@@ -195,6 +195,27 @@ func TestIndexIncludesGalleryControls(t *testing.T) {
 	}
 }
 
+func TestIndexIncludesAdaptiveBackgroundControls(t *testing.T) {
+	srv, err := New("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"data-background-overlay=\"medium\"", "name=\"background_overlay\"", "backgroundOverlayAlpha", "var(--control-bg)", "backdrop-filter: blur(16px)"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
+	}
+}
+
 func TestAuthProtectsIndexAndStatus(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
@@ -610,7 +631,7 @@ func TestSettingsUpdateSavesAppearance(t *testing.T) {
 		t.Fatalf("New failed: %v", err)
 	}
 
-	body := []byte(`{"background_color":"#123abc","background_image":"/uploads/bg.webp"}`)
+	body := []byte(`{"background_color":"#123abc","background_image":"/uploads/bg.webp","background_overlay":"high"}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
@@ -625,7 +646,7 @@ func TestSettingsUpdateSavesAppearance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("saved config did not reload: %v", err)
 	}
-	if cfg.Appearance.BackgroundColor != "#123abc" || cfg.Appearance.BackgroundImage != "/uploads/bg.webp" {
+	if cfg.Appearance.BackgroundColor != "#123abc" || cfg.Appearance.BackgroundImage != "/uploads/bg.webp" || cfg.Appearance.BackgroundOverlay != "high" {
 		t.Fatalf("appearance was not saved: %#v", cfg.Appearance)
 	}
 }

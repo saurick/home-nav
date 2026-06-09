@@ -72,8 +72,9 @@ type ServiceSortGroupRequest struct {
 }
 
 type AppearanceUpdateRequest struct {
-	BackgroundColor string `json:"background_color"`
-	BackgroundImage string `json:"background_image"`
+	BackgroundColor   string `json:"background_color"`
+	BackgroundImage   string `json:"background_image"`
+	BackgroundOverlay string `json:"background_overlay"`
 }
 
 type ServiceHealthUpdateRequest struct {
@@ -870,6 +871,7 @@ func (s *Server) updateAppearance(payload AppearanceUpdateRequest) (*Config, err
 
 	cfg.Appearance.BackgroundColor = payload.BackgroundColor
 	cfg.Appearance.BackgroundImage = payload.BackgroundImage
+	cfg.Appearance.BackgroundOverlay = payload.BackgroundOverlay
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		return nil, err
 	}
@@ -981,17 +983,33 @@ func backgroundCSS(appearance Appearance) template.CSS {
 	if color == "" {
 		color = "#000000"
 	}
+	overlay := backgroundOverlayAlpha(appearance.BackgroundOverlay)
 	var b strings.Builder
 	b.WriteString("background-color:")
 	b.WriteString(color)
 	b.WriteString(";")
 	if appearance.BackgroundImage != "" {
 		image := cssEscapePattern.ReplaceAllString(appearance.BackgroundImage, "")
-		b.WriteString("background-image:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url(\"")
+		b.WriteString("background-image:linear-gradient(rgba(0,0,0,")
+		b.WriteString(overlay)
+		b.WriteString("),rgba(0,0,0,")
+		b.WriteString(overlay)
+		b.WriteString(")),url(\"")
 		b.WriteString(image)
 		b.WriteString("\");background-size:cover;background-position:center;background-attachment:fixed;")
 	}
 	return template.CSS(b.String())
+}
+
+func backgroundOverlayAlpha(value string) string {
+	switch value {
+	case "low":
+		return ".18"
+	case "high":
+		return ".42"
+	default:
+		return ".30"
+	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
@@ -1033,6 +1051,10 @@ const indexTemplate = `<!doctype html>
       --panel: #151515;
       --panel-2: #202026;
       --panel-3: #2c2c34;
+      --control-bg: rgba(12, 12, 14, .58);
+      --control-bg-hover: rgba(24, 24, 28, .72);
+      --control-border: rgba(255, 255, 255, .16);
+      --control-shadow: 0 10px 24px rgba(0, 0, 0, .22);
       --text: #f7f7f7;
       --muted: #b5bac5;
       --line: #4c4d56;
@@ -1051,10 +1073,10 @@ const indexTemplate = `<!doctype html>
     .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 52px 0 80px; }
     .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
     .top-tools form { margin: 0; }
-	    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
-	    .tool-button:hover { background: #242424; }
+    .tool-button { width: 48px; height: 48px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: var(--control-shadow); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
+	    .tool-button:hover { background: var(--control-bg-hover); }
 	    .tool-button:disabled { cursor: default; opacity: .42; }
-	    .tool-button:disabled:hover { background: #141414; }
+	    .tool-button:disabled:hover { background: var(--control-bg); }
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button iconify-icon { font-size: 22px; }
@@ -1063,7 +1085,7 @@ const indexTemplate = `<!doctype html>
     .clock { display: grid; gap: 4px; padding-bottom: 6px; }
     .clock-time { font-size: clamp(24px, 3vw, 36px); line-height: 1; font-weight: 800; }
     .clock-date { color: var(--muted); font-size: 16px; }
-    .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid #b8bcc6; border-radius: 18px; display: grid; grid-template-columns: 42px 1fr; align-items: center; padding: 0 14px; }
+    .search-wrap { width: min(806px, 100%); height: 50px; border: 1px solid rgba(255,255,255,.58); border-radius: 18px; background: rgba(10,10,12,.18); display: grid; grid-template-columns: 42px 1fr; align-items: center; padding: 0 14px; backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); }
     .search-wrap iconify-icon { color: #fff; font-size: 24px; }
     .search { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 18px; }
     .search::placeholder { color: #9ea4b0; }
@@ -1071,8 +1093,8 @@ const indexTemplate = `<!doctype html>
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .group-heading { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-    h2 { margin: 0; font-size: 24px; letter-spacing: 0; font-weight: 800; }
-    .group-count { color: var(--muted); font-size: 14px; }
+    h2 { margin: 0; font-size: 24px; letter-spacing: 0; font-weight: 800; text-shadow: 0 2px 12px rgba(0,0,0,.38); }
+    .group-count { color: var(--muted); font-size: 14px; text-shadow: 0 2px 10px rgba(0,0,0,.34); }
     .group-actions { display: flex; align-items: center; gap: 8px; }
     .group-action { width: 38px; height: 38px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .group-action:hover, .group-action.is-active { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.08); }
@@ -1084,20 +1106,20 @@ const indexTemplate = `<!doctype html>
 	    body.is-dragging .app-icon { cursor: grabbing; }
 	    body.is-dragging .app-icon:not(.is-dragging) { will-change: transform; }
 	    .app-icon.is-dragging { position: fixed; left: 0; top: 0; z-index: 70; opacity: .96; pointer-events: none; filter: drop-shadow(0 22px 34px rgba(0,0,0,.46)); transform: translate3d(0,0,0); will-change: transform; }
-	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: #242424; }
+	    body.is-dragging .app-icon.is-dragging .icon-button { transform: none; background: var(--control-bg-hover); }
 	    .drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }
-	    .icon-button { width: 76px; height: 76px; border: 0; border-radius: 14px; background: var(--panel); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease; position: relative; }
-    .icon-button:hover { transform: translateY(-2px); background: #1f1f1f; }
+	    .icon-button { width: 76px; height: 76px; border: 1px solid var(--control-border); border-radius: 14px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .12s ease, border-color .12s ease; position: relative; box-shadow: var(--control-shadow); backdrop-filter: blur(16px) saturate(135%); -webkit-backdrop-filter: blur(16px) saturate(135%); }
+    .icon-button:hover { transform: translateY(-2px); background: var(--control-bg-hover); border-color: rgba(255,255,255,.25); }
     body.is-edit-mode .icon-button { outline: 2px dashed rgba(255,255,255,.55); outline-offset: 5px; }
     .icon-button:focus-visible { outline: 3px solid rgba(103, 224, 182, .45); outline-offset: 3px; }
     .icon-button iconify-icon { font-size: 42px; }
     .icon-button img { width: 50px; height: 50px; object-fit: contain; border-radius: 10px; }
     .icon-fallback { font-size: 17px; font-weight: 800; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .health-dot { position: absolute; right: 7px; bottom: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 0 2px var(--panel); }
+    .health-dot { position: absolute; right: 7px; bottom: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 0 2px rgba(10,10,12,.70), 0 2px 8px rgba(0,0,0,.28); }
     .health-dot[data-status="healthy"] { background: var(--ok); }
     .health-dot[data-status="unhealthy"] { background: var(--bad); }
     .health-dot[data-status="disabled"] { background: var(--disabled); }
-    .app-name { width: 92px; min-height: 38px; text-align: center; color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+    .app-name { width: 92px; min-height: 38px; text-align: center; color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; text-shadow: 0 2px 10px rgba(0,0,0,.50); }
     .empty { display: none; color: var(--muted); padding: 22px 0; }
     body.is-empty .empty { display: block; }
     .group.is-hidden, .app-icon.is-hidden { display: none; }
@@ -1243,7 +1265,7 @@ const indexTemplate = `<!doctype html>
     }
   </style>
 </head>
-<body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}">
+<body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
 	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><iconify-icon id="access-mode-icon" icon="mdi:web"></iconify-icon></button>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled><iconify-icon icon="mdi:content-save-outline"></iconify-icon></button>
@@ -1330,6 +1352,7 @@ const indexTemplate = `<!doctype html>
         <div class="form-grid">
           <div class="field"><label>背景颜色</label><div class="color-row"><input name="background_color_picker" type="color"><input name="background_color" placeholder="#000000"></div></div>
           <div class="field"><label>背景图片</label><div class="icon-field-row"><input name="background_image" placeholder="/uploads/background.png 或 https://example.com/bg.jpg"><button class="upload-button" type="button" id="open-background-gallery-button">图库</button><button class="upload-button" type="button" id="upload-background-button">上传图片</button></div><input class="file-input" id="upload-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"></div>
+          <div class="field"><label>壁纸遮罩</label><select name="background_overlay"><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></div>
         </div>
         <div class="form-actions"><button class="secondary-button" type="button" id="reset-background-button">恢复默认</button><button class="save-button" type="submit">保存</button></div>
 	      </form>
@@ -1607,26 +1630,32 @@ const indexTemplate = `<!doctype html>
     function normalizeHexColor(value) {
       return /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#000000';
     }
-    function backgroundStyle(color, image) {
+    function backgroundOverlayAlpha(value) {
+      if (value === 'low') return '.18';
+      if (value === 'high') return '.42';
+      return '.30';
+    }
+    function backgroundStyle(color, image, overlay) {
       const style = { backgroundColor: color || '#000000', backgroundImage: '', backgroundSize: '', backgroundPosition: '', backgroundAttachment: '' };
       if (image) {
-        style.backgroundImage = 'linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url("' + String(image).replace(/["\\\n\r]/g, '') + '")';
+        const alpha = backgroundOverlayAlpha(overlay);
+        style.backgroundImage = 'linear-gradient(rgba(0,0,0,' + alpha + '),rgba(0,0,0,' + alpha + ')),url("' + String(image).replace(/["\\\n\r]/g, '') + '")';
         style.backgroundSize = 'cover';
         style.backgroundPosition = 'center';
         style.backgroundAttachment = 'fixed';
       }
       return style;
     }
-    function applyBackgroundPreview(color, image, target) {
-      const style = backgroundStyle(color, image);
+    function applyBackgroundPreview(color, image, overlay, target) {
+      const style = backgroundStyle(color, image, overlay);
       target.style.backgroundColor = style.backgroundColor;
       target.style.backgroundImage = style.backgroundImage;
       target.style.backgroundSize = style.backgroundSize;
       target.style.backgroundPosition = style.backgroundPosition;
       target.style.backgroundAttachment = '';
     }
-    function applyBodyBackground(color, image) {
-      const style = backgroundStyle(color, image);
+    function applyBodyBackground(color, image, overlay) {
+      const style = backgroundStyle(color, image, overlay);
       document.body.style.backgroundColor = style.backgroundColor;
       document.body.style.backgroundImage = style.backgroundImage;
       document.body.style.backgroundSize = style.backgroundSize;
@@ -1636,10 +1665,12 @@ const indexTemplate = `<!doctype html>
     function openSettings() {
       const color = document.body.dataset.backgroundColor || '#000000';
       const image = document.body.dataset.backgroundImage || '';
+      const overlay = document.body.dataset.backgroundOverlay || 'medium';
       settingField('background_color').value = color;
       settingField('background_color_picker').value = normalizeHexColor(color);
       settingField('background_image').value = image;
-      applyBackgroundPreview(color, image, settingsPreview);
+      settingField('background_overlay').value = overlay;
+      applyBackgroundPreview(color, image, overlay, settingsPreview);
       settingsBackdrop.classList.add('is-open');
 	    }
 	    function closeSettings() { settingsBackdrop.classList.remove('is-open'); }
@@ -1718,7 +1749,8 @@ const indexTemplate = `<!doctype html>
 	    async function setBackgroundImageFromAsset(asset) {
 	      const payload = {
 	        background_color: document.body.dataset.backgroundColor || '#000000',
-	        background_image: asset.url
+	        background_image: asset.url,
+	        background_overlay: document.body.dataset.backgroundOverlay || 'medium'
 	      };
 	      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 	      const result = await response.json().catch(() => ({}));
@@ -1728,10 +1760,12 @@ const indexTemplate = `<!doctype html>
 	      }
 	      document.body.dataset.backgroundColor = payload.background_color;
 	      document.body.dataset.backgroundImage = payload.background_image;
-	      applyBodyBackground(payload.background_color, payload.background_image);
+	      document.body.dataset.backgroundOverlay = payload.background_overlay;
+	      applyBodyBackground(payload.background_color, payload.background_image, payload.background_overlay);
 	      if (settingsBackdrop.classList.contains('is-open')) {
 	        settingField('background_image').value = payload.background_image;
-	        applyBackgroundPreview(payload.background_color, payload.background_image, settingsPreview);
+	        settingField('background_overlay').value = payload.background_overlay;
+	        applyBackgroundPreview(payload.background_color, payload.background_image, payload.background_overlay, settingsPreview);
 	      }
 	      showToast('背景已更新');
 	      await loadGallery();
@@ -1954,7 +1988,8 @@ const indexTemplate = `<!doctype html>
       event.preventDefault();
       const payload = {
         background_color: settingField('background_color').value,
-        background_image: settingField('background_image').value
+        background_image: settingField('background_image').value,
+        background_overlay: settingField('background_overlay').value
       };
       const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -1964,7 +1999,8 @@ const indexTemplate = `<!doctype html>
       }
       document.body.dataset.backgroundColor = payload.background_color;
       document.body.dataset.backgroundImage = payload.background_image;
-      applyBodyBackground(payload.background_color, payload.background_image);
+      document.body.dataset.backgroundOverlay = payload.background_overlay;
+      applyBodyBackground(payload.background_color, payload.background_image, payload.background_overlay);
       showToast('页面设置已保存');
 	      closeSettings();
 	    }
@@ -2050,7 +2086,7 @@ const indexTemplate = `<!doctype html>
           return;
         }
         settingField('background_image').value = payload.url || '';
-        applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview);
+        applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingField('background_overlay').value, settingsPreview);
         showToast('背景图已上传');
       } finally {
         uploadBackgroundButton.disabled = false;
@@ -2404,10 +2440,10 @@ const indexTemplate = `<!doctype html>
     form.addEventListener('submit', saveItem);
     deleteButton.addEventListener('click', deleteItem);
     settingsForm.addEventListener('submit', saveSettings);
-    settingsForm.addEventListener('input', () => applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview));
+    settingsForm.addEventListener('input', () => applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingField('background_overlay').value, settingsPreview));
     settingField('background_color_picker').addEventListener('input', () => {
       settingField('background_color').value = settingField('background_color_picker').value;
-      applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingsPreview);
+      applyBackgroundPreview(settingField('background_color').value, settingField('background_image').value, settingField('background_overlay').value, settingsPreview);
     });
     settingField('background_color').addEventListener('input', () => {
       const value = settingField('background_color').value;
@@ -2437,7 +2473,8 @@ const indexTemplate = `<!doctype html>
       settingField('background_color').value = '#000000';
       settingField('background_color_picker').value = '#000000';
       settingField('background_image').value = '';
-      applyBackgroundPreview('#000000', '', settingsPreview);
+      settingField('background_overlay').value = 'medium';
+      applyBackgroundPreview('#000000', '', 'medium', settingsPreview);
     });
     uploadButton.addEventListener('click', () => uploadFile.click());
     uploadFile.addEventListener('change', () => uploadIcon(uploadFile.files?.[0]));

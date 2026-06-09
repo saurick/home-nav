@@ -72,7 +72,7 @@ docker compose -f deploy/docker-compose.yml up -d
 - 页面支持编辑模式；编辑模式开启后可以拖拽图标调整排序，松手后会自动写回 YAML，右上角保存按钮可用于保存未完成的排序变更。未拖拽时左键点击图标进入编辑，关闭编辑模式后左键仍然直接跳转。
 - 页面支持分组管理：可以新增分组、重命名分组、调整分组顺序并删除空分组；含有入口的分组不能直接删除，需要先移动或删除入口。
 - 页面支持外网 / 内网访问模式切换；该偏好保存在浏览器本地，影响服务卡片左键默认打开的入口。
-- `appearance.background_color` 和 `appearance.background_image` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL。
+- `appearance.background_color`、`appearance.background_image` 和 `appearance.background_overlay` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL；`background_overlay` 支持 `low`、`medium`、`high`，用于在不同明暗壁纸上保持图标和文字可读。
 - 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把图标目录挂载到容器内；编辑页上传图片也会写入这个目录。真实上传图标目录不要提交到仓库。
 - 页面设置里的背景图上传复用 `assets.uploads_dir`，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。
 - 页面支持图库管理：可以查看、筛选、上传、复制和删除 `assets.uploads_dir` 下的图片资源，并可从图库回填入口图标或设置页面背景。

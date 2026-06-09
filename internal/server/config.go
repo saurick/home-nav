@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	defaultCheckInterval = 30 * time.Second
-	defaultHealthTimeout = 2 * time.Second
+	defaultCheckInterval     = 30 * time.Second
+	defaultHealthTimeout     = 2 * time.Second
+	defaultBackgroundOverlay = "medium"
 )
 
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -30,8 +31,9 @@ type Config struct {
 }
 
 type Appearance struct {
-	BackgroundColor string `yaml:"background_color" json:"background_color"`
-	BackgroundImage string `yaml:"background_image" json:"background_image"`
+	BackgroundColor   string `yaml:"background_color" json:"background_color"`
+	BackgroundImage   string `yaml:"background_image" json:"background_image"`
+	BackgroundOverlay string `yaml:"background_overlay" json:"background_overlay"`
 }
 
 type AssetsConfig struct {
@@ -195,11 +197,18 @@ func (c *Config) NormalizeAndValidate() error {
 func normalizeAppearance(appearance *Appearance) error {
 	appearance.BackgroundColor = strings.TrimSpace(appearance.BackgroundColor)
 	appearance.BackgroundImage = strings.TrimSpace(appearance.BackgroundImage)
+	appearance.BackgroundOverlay = strings.TrimSpace(appearance.BackgroundOverlay)
 	if appearance.BackgroundColor == "" {
 		appearance.BackgroundColor = "#000000"
 	}
+	if appearance.BackgroundOverlay == "" {
+		appearance.BackgroundOverlay = defaultBackgroundOverlay
+	}
 	if !validHexColor(appearance.BackgroundColor) {
 		return fmt.Errorf("配置错误: appearance.background_color 必须是 #RGB 或 #RRGGBB")
+	}
+	if !validBackgroundOverlay(appearance.BackgroundOverlay) {
+		return fmt.Errorf("配置错误: appearance.background_overlay 必须是 low、medium 或 high")
 	}
 	if appearance.BackgroundImage == "" {
 		return nil
@@ -211,6 +220,15 @@ func normalizeAppearance(appearance *Appearance) error {
 		return err
 	}
 	return nil
+}
+
+func validBackgroundOverlay(value string) bool {
+	switch value {
+	case "low", "medium", "high":
+		return true
+	default:
+		return false
+	}
 }
 
 func validHexColor(value string) bool {
