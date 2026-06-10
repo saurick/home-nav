@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -567,6 +568,49 @@ func TestAuthLoginFlow(t *testing.T) {
 	}
 }
 
+func TestLoginSessionCookieHasNoAutomaticExpiry(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("username", "admin")
+	form.Set("password", "test-password")
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected login redirect, got %d", rec.Code)
+	}
+	rawCookie := rec.Header().Get("Set-Cookie")
+	if rawCookie == "" {
+		t.Fatal("expected session cookie")
+	}
+	if strings.Contains(rawCookie, "Max-Age=") || strings.Contains(rawCookie, "Expires=") {
+		t.Fatalf("session cookie should not set an automatic expiry: %q", rawCookie)
+	}
+}
+
+func TestLegacyExpiredSessionCookieStillAuthenticates(t *testing.T) {
+	srv, err := New(writeTempConfig(t, authTestConfig()))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	legacyPayload := base64.RawURLEncoding.EncodeToString([]byte("admin:1"))
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: legacyPayload + "." + srv.sign(legacyPayload)})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected legacy session to stay valid, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestServiceUpdateSavesConfig(t *testing.T) {
 	configPath := writeTempConfig(t, authTestConfig())
 	srv, err := New(configPath)
@@ -593,7 +637,7 @@ func TestServiceUpdateSavesConfig(t *testing.T) {
 	}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/services/app", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -638,7 +682,7 @@ func TestServiceCreateSavesConfig(t *testing.T) {
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/services", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -667,7 +711,7 @@ func TestServiceDeleteSavesConfig(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/services/app", nil)
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -687,7 +731,7 @@ func TestServiceDeleteSavesConfig(t *testing.T) {
 	}
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	statusReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	statusReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	statusRec := httptest.NewRecorder()
 	srv.ServeHTTP(statusRec, statusReq)
 	if statusRec.Code != http.StatusOK {
@@ -717,7 +761,7 @@ func TestServiceSortSavesConfig(t *testing.T) {
 	}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/services/sort", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -753,7 +797,7 @@ func TestServiceSortRejectsIncompleteOrder(t *testing.T) {
 	}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/services/sort", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -768,7 +812,7 @@ func TestGroupCreateUpdateSortAndDeleteSavesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")}
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/groups", bytes.NewReader([]byte(`{"name":"媒体服务"}`)))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -844,7 +888,7 @@ func TestGroupDeleteRejectsNonEmptyGroup(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/groups/ops", nil)
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -866,7 +910,7 @@ func TestSettingsUpdateSavesAppearance(t *testing.T) {
 	body := []byte(`{"background_color":"#123abc","background_image":"/uploads/bg.webp","background_overlay":"high"}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -970,7 +1014,7 @@ groups:
 
 	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1022,7 +1066,7 @@ groups:
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")}
 
 	iconURL := uploadTestPNG(t, srv, cookie, "wide-icon.png", 1000, 500, "icon")
 	wallpaperURL := uploadTestPNG(t, srv, cookie, "square-wallpaper.png", 400, 400, "wallpaper")
@@ -1100,7 +1144,7 @@ groups:
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/api/assets", nil)
 	listReq.AddCookie(cookie)
@@ -1177,7 +1221,7 @@ groups:
 		t.Fatalf("New failed: %v", err)
 	}
 	req := httptest.NewRequest(http.MethodDelete, "/api/assets?url=/uploads/../services.yaml", nil)
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin", time.Now())})
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {

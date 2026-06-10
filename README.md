@@ -74,6 +74,8 @@ docker compose -f deploy/docker-compose.yml up -d
 - 首次设置会写回 `services.yaml`，启用登录并生成随机 `auth.session_secret`。运行配置必须可写，Docker 挂载时不要使用只读挂载。
 - `auth.enabled` 为 `true` 时，首页和 `/api/status` 需要登录，`/healthz` 仍保持公开。
 - `auth.enabled` 为 `true` 时不能继续使用示例默认密码或示例 `session_secret`；真实 `auth.password` 和 `auth.session_secret` 只应放在私有运行配置里，不要提交到仓库。
+- 登录 session 不设置自动过期时间；登录后会一直保持到用户手动退出、浏览器清理 Cookie，或服务端更换 `auth.session_secret`。
+- 旧配置中的 `auth.session_ttl` 会被兼容读取，但不再参与登录有效期判断，新写回的配置不会继续输出该字段。
 - 页面支持新增、编辑、删除入口并写回 YAML；如果用 Docker 挂载配置文件，`/app/services.yaml` 需要读写挂载。只读挂载可以浏览，但保存变更会失败。
 - 页面里的删除只删除导航入口，不会删除、停止或重启真实服务。
 - 页面支持编辑模式；编辑模式开启后可以拖拽图标调整排序，松手后会自动写回 YAML，右上角保存按钮可用于保存未完成的排序变更。未拖拽时左键点击图标进入编辑，关闭编辑模式后左键仍然直接跳转。

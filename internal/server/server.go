@@ -801,9 +801,6 @@ func (s *Server) initializeAuth(username, password, confirmPassword string) (*Co
 	cfg.Auth.Username = username
 	cfg.Auth.Password = password
 	cfg.Auth.SessionSecret = secret
-	if cfg.Auth.SessionTTL == 0 {
-		cfg.Auth.SessionTTL = 24 * time.Hour
-	}
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		return nil, err
 	}

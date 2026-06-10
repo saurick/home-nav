@@ -6,11 +6,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const sessionCookieName = "home_nav_session"
@@ -50,41 +48,40 @@ func (s *Server) authenticated(r *http.Request) bool {
 		return false
 	}
 
-	username, expires, ok := s.parseSession(cookie.Value)
-	return ok && username == cfg.Auth.Username && time.Now().Before(expires)
+	username, ok := s.parseSession(cookie.Value)
+	return ok && username == cfg.Auth.Username
 }
 
-func (s *Server) newSession(username string, now time.Time) string {
-	cfg := s.currentConfig()
-	expires := now.Add(cfg.Auth.SessionTTL).Unix()
-	payload := fmt.Sprintf("%s:%d", username, expires)
+func (s *Server) newSession(username string) string {
+	payload := username
 	encodedPayload := base64.RawURLEncoding.EncodeToString([]byte(payload))
 	signature := s.sign(encodedPayload)
 	return encodedPayload + "." + signature
 }
 
-func (s *Server) parseSession(value string) (string, time.Time, bool) {
+func (s *Server) parseSession(value string) (string, bool) {
 	payload, signature, ok := strings.Cut(value, ".")
 	if !ok || payload == "" || signature == "" {
-		return "", time.Time{}, false
+		return "", false
 	}
 	if !constantTimeEqual(signature, s.sign(payload)) {
-		return "", time.Time{}, false
+		return "", false
 	}
 
 	rawPayload, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {
-		return "", time.Time{}, false
+		return "", false
 	}
-	username, rawExpires, ok := strings.Cut(string(rawPayload), ":")
-	if !ok {
-		return "", time.Time{}, false
+	username := string(rawPayload)
+	if legacyUsername, rawExpires, ok := strings.Cut(username, ":"); ok {
+		if _, err := strconv.ParseInt(rawExpires, 10, 64); err == nil {
+			username = legacyUsername
+		}
 	}
-	expiresUnix, err := strconv.ParseInt(rawExpires, 10, 64)
-	if err != nil {
-		return "", time.Time{}, false
+	if username == "" {
+		return "", false
 	}
-	return username, time.Unix(expiresUnix, 0), true
+	return username, true
 }
 
 func (s *Server) sign(payload string) string {
@@ -119,12 +116,10 @@ func randomSessionSecret() (string, error) {
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, username string) {
-	cfg := s.currentConfig()
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    s.newSession(username, time.Now()),
+		Value:    s.newSession(username),
 		Path:     "/",
-		MaxAge:   int(cfg.Auth.SessionTTL.Seconds()),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   isSecureRequest(r),

@@ -9,7 +9,6 @@ auth:
   username: admin
   password: change-me
   session_secret: change-this-to-at-least-32-random-characters
-  session_ttl: 24h
 
 assets:
   uploads_dir: ""

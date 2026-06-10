@@ -43,11 +43,12 @@ type AssetsConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled       bool          `yaml:"enabled"`
-	Username      string        `yaml:"username"`
-	Password      string        `yaml:"password"`
-	SessionSecret string        `yaml:"session_secret"`
-	SessionTTL    time.Duration `yaml:"session_ttl"`
+	Enabled       bool   `yaml:"enabled"`
+	Username      string `yaml:"username"`
+	Password      string `yaml:"password"`
+	SessionSecret string `yaml:"session_secret"`
+	// SessionTTL 已废弃：登录不再自动过期，仅用于兼容旧配置。
+	SessionTTL time.Duration `yaml:"session_ttl"`
 }
 
 type Group struct {
@@ -287,12 +288,6 @@ func normalizeAuth(auth *AuthConfig) error {
 	auth.Username = strings.TrimSpace(auth.Username)
 	auth.Password = strings.TrimSpace(auth.Password)
 	auth.SessionSecret = strings.TrimSpace(auth.SessionSecret)
-	if auth.SessionTTL == 0 {
-		auth.SessionTTL = 24 * time.Hour
-	}
-	if auth.SessionTTL < time.Minute {
-		return fmt.Errorf("配置错误: auth.session_ttl 不能小于 1m")
-	}
 	if !auth.Enabled {
 		return nil
 	}

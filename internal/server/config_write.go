@@ -40,7 +40,6 @@ func renderConfigYAML(cfg *Config) string {
 		line(&b, 1, "username: %s", yamlString(cfg.Auth.Username))
 		line(&b, 1, "password: %s", yamlString(cfg.Auth.Password))
 		line(&b, 1, "session_secret: %s", yamlString(cfg.Auth.SessionSecret))
-		line(&b, 1, "session_ttl: %s", yamlString(durationString(cfg.Auth.SessionTTL)))
 	}
 	if cfg.Assets.UploadsDir != "" || cfg.Assets.IconCacheDir != "" {
 		b.WriteString("\n")
