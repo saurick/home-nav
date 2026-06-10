@@ -1648,7 +1648,7 @@ const indexTemplate = `<!doctype html>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
-            <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noreferrer" aria-label="{{.Name}}">
+            <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" aria-label="{{.Name}}">
               {{serviceIcon .}}
               <span class="health-dot" data-status="unknown"></span>
             </a>
@@ -1832,7 +1832,8 @@ const indexTemplate = `<!doctype html>
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
     function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
     function openHref(url) { return url || '#'; }
-    function openEntryURL(url) { url ? window.open(url, '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
+    function openRedirectHref(url) { return url ? '/open?url=' + encodeURIComponent(url) : '#'; }
+    function openEntryURL(url) { url ? window.open(openRedirectHref(url), '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
     function preferredURL(item, mode) {
       const internalURL = item.dataset.internalUrl || '';
       const externalURL = item.dataset.externalUrl || '';
@@ -2758,6 +2759,11 @@ const indexTemplate = `<!doctype html>
         if (suppressClick) {
           suppressClick = false;
           event.preventDefault();
+          return;
+        }
+        if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
+          openEntryURL(preferredURL(item, accessMode));
         }
       });
       button.addEventListener('contextmenu', event => {

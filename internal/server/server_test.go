@@ -106,8 +106,15 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 	if !strings.Contains(body, `href="https://dockge.example.com"`) {
 		t.Fatal("index should render service clicks as direct links")
 	}
-	if !strings.Contains(body, "function openHref(url)") || !strings.Contains(body, "function openEntryURL(url)") {
-		t.Fatal("index should open menu links directly through the browser helper")
+	for _, want := range []string{
+		`rel="noopener noreferrer"`,
+		"function openRedirectHref(url)",
+		"window.open(openRedirectHref(url), '_blank', 'noopener,noreferrer')",
+		"openEntryURL(preferredURL(item, accessMode))",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected index to contain %q", want)
+		}
 	}
 	if !strings.Contains(body, "function copyTextFallback(value)") || !strings.Contains(body, "document.execCommand('copy')") || !strings.Contains(body, "window.isSecureContext") {
 		t.Fatal("index should provide an insecure-http copy fallback for server access")
