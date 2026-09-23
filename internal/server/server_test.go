@@ -99,7 +99,7 @@ func TestIndexIncludesAccessModeToggle(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-button\"", "data-internal-url=", "data-external-url=", "home-nav.access-mode"} {
+	for _, want := range []string{"id=\"access-mode-button\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -482,6 +482,7 @@ func TestLoginIncludesAccessModeToggle(t *testing.T) {
 	for _, want := range []string{
 		"id=\"access-mode-button\"",
 		"home-nav.access-mode",
+		"['external', 'internal', 'internal_domain']",
 		"id=\"login-password\"",
 		"data-target=\"login-password\"",
 		"data-password-toggle",
@@ -624,6 +625,7 @@ func TestServiceUpdateSavesConfig(t *testing.T) {
 		"icon_text": "RA",
 		"icon": "mdi:application",
 		"internal_url": "http://app.example.local/new",
+		"internal_domain_url": "https://app-lan.example.test/ui/#/login",
 		"external_url": "https://app.example.test",
 		"tags": ["ops", "tools"],
 		"notes": "保存测试",
@@ -653,8 +655,28 @@ func TestServiceUpdateSavesConfig(t *testing.T) {
 	if got.Name != "Renamed App" || got.Icon != "mdi:application" {
 		t.Fatalf("service was not saved: %#v", got)
 	}
+	if got.InternalDomainURL != "https://app-lan.example.test/ui/#/login" {
+		t.Fatalf("internal domain URL was not saved: %q", got.InternalDomainURL)
+	}
 	if got.Health.Type != "http" || got.Health.ExpectStatus != 204 || got.Health.Timeout != 1500*time.Millisecond {
 		t.Fatalf("health was not saved: %#v", got.Health)
+	}
+
+	clearBody := bytes.Replace(body, []byte(`"https://app-lan.example.test/ui/#/login"`), []byte(`""`), 1)
+	clearReq := httptest.NewRequest(http.MethodPut, "/api/services/app", bytes.NewReader(clearBody))
+	clearReq.Header.Set("Content-Type", "application/json")
+	clearReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: srv.newSession("admin")})
+	clearRec := httptest.NewRecorder()
+	srv.ServeHTTP(clearRec, clearReq)
+	if clearRec.Code != http.StatusOK {
+		t.Fatalf("clearing internal domain URL failed: %d: %s", clearRec.Code, clearRec.Body.String())
+	}
+	cfg, err = LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("cleared config did not reload: %v", err)
+	}
+	if cfg.Groups[0].Services[0].InternalDomainURL != "" {
+		t.Fatalf("internal domain URL was not cleared: %q", cfg.Groups[0].Services[0].InternalDomainURL)
 	}
 }
 
@@ -670,7 +692,8 @@ func TestServiceCreateSavesConfig(t *testing.T) {
 		"description": "新增入口",
 		"icon_text": "NT",
 		"icon": "mdi:plus",
-		"internal_url": "http://new.example.local",
+		"internal_url": "",
+		"internal_domain_url": "https://new-lan.example.test/ui/#/login",
 		"external_url": "",
 		"tags": ["tools"],
 		"notes": "新增测试",
@@ -698,7 +721,7 @@ func TestServiceCreateSavesConfig(t *testing.T) {
 		t.Fatalf("expected 2 services, got %d", len(cfg.Groups[0].Services))
 	}
 	got := cfg.Groups[0].Services[1]
-	if got.ID != "new-tool" || got.Name != "New Tool" || got.Health.Type != "disabled" {
+	if got.ID != "new-tool" || got.Name != "New Tool" || got.Health.Type != "disabled" || got.InternalDomainURL != "https://new-lan.example.test/ui/#/login" || got.DefaultURL() != got.InternalDomainURL {
 		t.Fatalf("service was not created correctly: %#v", got)
 	}
 }
@@ -1287,11 +1310,13 @@ func TestSaveConfigRoundTrip(t *testing.T) {
 				Name: "工具",
 				Services: []Service{
 					{
-						ID:          "tool",
-						Name:        "Tool",
-						Icon:        "mdi:tools",
-						ExternalURL: "https://example.com/path?a=1#section",
-						Tags:        nil,
+						ID:                "tool",
+						Name:              "Tool",
+						Icon:              "mdi:tools",
+						InternalURL:       "https://192.168.1.10/ui/#/login",
+						InternalDomainURL: "https://tool-lan.example.test/ui/#/login",
+						ExternalURL:       "https://example.com/path?a=1#section",
+						Tags:              nil,
 						Health: HealthCheck{
 							Type:    "disabled",
 							Timeout: 2 * time.Second,
@@ -1311,6 +1336,9 @@ func TestSaveConfigRoundTrip(t *testing.T) {
 	got := loaded.Groups[0].Services[0]
 	if got.ExternalURL != "https://example.com/path?a=1#section" {
 		t.Fatalf("unexpected external url: %q", got.ExternalURL)
+	}
+	if got.InternalURL != "https://192.168.1.10/ui/#/login" || got.InternalDomainURL != "https://tool-lan.example.test/ui/#/login" {
+		t.Fatalf("unexpected internal URLs: %q, %q", got.InternalURL, got.InternalDomainURL)
 	}
 	if len(got.Tags) != 0 {
 		t.Fatalf("expected empty tags, got %#v", got.Tags)
@@ -1338,6 +1366,25 @@ groups:
 	_, err := LoadConfig(path)
 	if err == nil {
 		t.Fatal("expected duplicate service id error")
+	}
+}
+
+func TestConfigRejectsInvalidInternalDomainURL(t *testing.T) {
+	path := writeTempConfig(t, `
+groups:
+  - id: ops
+    name: 运维
+    services:
+      - id: app
+        name: App
+        internal_domain_url: javascript:alert(1)
+        health:
+          type: disabled
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "internal_domain_url") {
+		t.Fatalf("expected internal_domain_url validation error, got %v", err)
 	}
 }
 

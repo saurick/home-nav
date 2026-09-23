@@ -5,7 +5,7 @@
 ## 目标
 
 - 从配置文件读取服务分组和入口。
-- 展示内网 / 外网访问链接。
+- 展示内网 IP、内网域名和外网访问链接。
 - 展示服务标签和只读健康状态。
 - 使用 Go 单二进制部署，减少运行时依赖。
 - 使用 YAML 配置作为唯一真源。
@@ -65,6 +65,7 @@ docker compose -f deploy/docker-compose.yml up -d
 
 - `groups[].services[]` 是导航入口唯一真源。
 - 每个服务至少配置 `id`、`name`、一个入口 URL 和 `health.type`。
+- 入口可分别填写 `internal_url`（内网 IP）、`internal_domain_url`（内网域名）和 `external_url`（外网）。三个字段都接受完整的 HTTP 或 HTTPS URL，旧配置的 `internal_url` 保持有效。
 - 健康检查支持 `disabled`、`http` 和 `tcp`。
 - 后端按 `check_interval` 定时刷新状态缓存，页面和 `/api/status` 不会实时探测每个服务。
 - 配置解析会拒绝未知字段、重复 ID、非法 URL 和缺失健康检查参数。
@@ -80,7 +81,7 @@ docker compose -f deploy/docker-compose.yml up -d
 - 页面里的删除只删除导航入口，不会删除、停止或重启真实服务。
 - 页面支持编辑模式；编辑模式开启后可以拖拽图标调整排序，松手后会自动写回 YAML，右上角保存按钮可用于保存未完成的排序变更。未拖拽时左键点击图标进入编辑，关闭编辑模式后左键仍然直接跳转。
 - 页面支持分组管理：可以新增分组、重命名分组、调整分组顺序并删除空分组；含有入口的分组不能直接删除，需要先移动或删除入口。
-- 页面支持外网 / 内网访问模式切换；该偏好保存在浏览器本地，影响服务卡片左键默认打开的入口。
+- 页面右上角的访问模式按钮依次切换外网、内网 IP、内网域名；偏好保存在浏览器本地，影响服务卡片左键默认打开的入口。所选入口未填写时，优先使用另一种内网入口，再使用外网入口；外网模式则依次使用外网、内网 IP、内网域名。右键菜单可单独打开或复制三个入口。
 - `appearance.background_color`、`appearance.background_image` 和 `appearance.background_overlay` 控制整页背景。背景图可以使用 `/uploads/...` 路径或 `http(s)` 图片 URL；`background_overlay` 支持 `low`、`medium`、`high`，用于在不同明暗壁纸上保持图标和文字可读。
 - 如果服务图标使用 `/uploads/...` 这类本地图标路径，需要配置 `assets.uploads_dir` 并把上传目录挂载到容器内；编辑页上传图标会写入 `icons/` 子目录。真实上传目录不要提交到仓库。
 - 页面设置里的背景图上传复用 `assets.uploads_dir`，新上传壁纸会写入 `wallpapers/` 子目录，所以生产环境需要把 `/app/uploads` 持久化挂载并保持可写。

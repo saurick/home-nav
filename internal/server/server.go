@@ -53,16 +53,17 @@ type SetupData struct {
 }
 
 type ServiceUpdateRequest struct {
-	Name        string                     `json:"name"`
-	Description string                     `json:"description"`
-	IconText    string                     `json:"icon_text"`
-	Icon        string                     `json:"icon"`
-	InternalURL string                     `json:"internal_url"`
-	ExternalURL string                     `json:"external_url"`
-	Tags        []string                   `json:"tags"`
-	Notes       string                     `json:"notes"`
-	GroupID     string                     `json:"group_id"`
-	Health      ServiceHealthUpdateRequest `json:"health"`
+	Name              string                     `json:"name"`
+	Description       string                     `json:"description"`
+	IconText          string                     `json:"icon_text"`
+	Icon              string                     `json:"icon"`
+	InternalURL       string                     `json:"internal_url"`
+	InternalDomainURL string                     `json:"internal_domain_url"`
+	ExternalURL       string                     `json:"external_url"`
+	Tags              []string                   `json:"tags"`
+	Notes             string                     `json:"notes"`
+	GroupID           string                     `json:"group_id"`
+	Health            ServiceHealthUpdateRequest `json:"health"`
 }
 
 type GroupUpdateRequest struct {
@@ -832,15 +833,16 @@ func (s *Server) createService(payload ServiceUpdateRequest) (*Config, Service, 
 	}
 
 	service := Service{
-		ID:          uniqueServiceID(cfg, payload.Name),
-		Name:        payload.Name,
-		Description: payload.Description,
-		IconText:    payload.IconText,
-		Icon:        payload.Icon,
-		InternalURL: payload.InternalURL,
-		ExternalURL: payload.ExternalURL,
-		Tags:        payload.Tags,
-		Notes:       payload.Notes,
+		ID:                uniqueServiceID(cfg, payload.Name),
+		Name:              payload.Name,
+		Description:       payload.Description,
+		IconText:          payload.IconText,
+		Icon:              payload.Icon,
+		InternalURL:       payload.InternalURL,
+		InternalDomainURL: payload.InternalDomainURL,
+		ExternalURL:       payload.ExternalURL,
+		Tags:              payload.Tags,
+		Notes:             payload.Notes,
 		Health: HealthCheck{
 			Type:         payload.Health.Type,
 			URL:          payload.Health.URL,
@@ -886,6 +888,7 @@ func (s *Server) updateService(id string, payload ServiceUpdateRequest) (*Config
 	service.IconText = payload.IconText
 	service.Icon = payload.Icon
 	service.InternalURL = payload.InternalURL
+	service.InternalDomainURL = payload.InternalDomainURL
 	service.ExternalURL = payload.ExternalURL
 	service.Tags = payload.Tags
 	service.Notes = payload.Notes
@@ -1444,6 +1447,7 @@ const indexTemplate = `<!doctype html>
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button .inline-icon { font-size: 22px; }
+	    .access-mode-label { font-size: 13px; font-weight: 700; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1481,7 +1485,7 @@ const indexTemplate = `<!doctype html>
     .empty { display: none; color: var(--muted); padding: 22px 0; }
     body.is-empty .empty { display: block; }
     .group.is-hidden { display: none; }
-    .menu { position: fixed; z-index: 50; min-width: 292px; border-radius: 6px; background: #53535d; box-shadow: 0 18px 48px rgba(0,0,0,.45); padding: 20px 0 10px; display: none; }
+    .menu { position: fixed; z-index: 50; min-width: 292px; max-height: calc(100vh - 24px); overflow-y: auto; border-radius: 6px; background: #53535d; box-shadow: 0 18px 48px rgba(0,0,0,.45); padding: 20px 0 10px; display: none; }
     .menu.is-open { display: block; }
     .menu-section { padding: 0 24px 16px; }
     .menu-title { margin: 0 0 8px; color: #e8e8ef; font-size: 24px; font-weight: 700; }
@@ -1623,7 +1627,7 @@ const indexTemplate = `<!doctype html>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
-	    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><span id="access-mode-icon">{{icon "mdi:web"}}</span></button>
+	    <button class="tool-button" type="button" id="access-mode-button" title="当前：外网入口" aria-label="当前：外网入口"><span class="access-mode-label" id="access-mode-label">外网</span></button>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-gallery-button" title="图库">{{icon "mdi:image-multiple-outline"}}</button>
@@ -1644,7 +1648,7 @@ const indexTemplate = `<!doctype html>
         </div>
         <div class="icon-grid">
           {{range .Services}}
-          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
+          <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-internal-domain-url="{{.InternalDomainURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
             <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" aria-label="{{.Name}}">
               {{serviceIcon .}}
               <span class="health-dot" data-status="unknown"></span>
@@ -1661,7 +1665,8 @@ const indexTemplate = `<!doctype html>
 
   <div class="menu" id="item-menu" role="menu" aria-hidden="true">
     <div class="menu-section"><p class="menu-title">打开外网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-external">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-external">{{icon "mdi:link-variant"}}</button></div></div>
-    <div class="menu-section"><p class="menu-title">打开内网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-internal">{{icon "mdi:link-variant"}}</button></div></div>
+    <div class="menu-section"><p class="menu-title">内网 IP 入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal" aria-label="打开内网 IP 入口">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-internal" aria-label="复制内网 IP 入口">{{icon "mdi:link-variant"}}</button></div></div>
+    <div class="menu-section"><p class="menu-title">内网域名入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-internal-domain" aria-label="打开内网域名入口">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-internal-domain" aria-label="复制内网域名入口">{{icon "mdi:link-variant"}}</button></div></div>
     <div class="menu-line"></div>
     <button class="menu-command" type="button" data-action="edit">{{icon "mdi:pencil-box-outline"}}编辑</button>
     <button class="menu-command" type="button" data-action="delete">{{icon "mdi:trash-can-outline"}}删除</button>
@@ -1679,7 +1684,8 @@ const indexTemplate = `<!doctype html>
           <div class="field"><label>图标文字</label><input name="icon_text" maxlength="12" placeholder="NAS"></div>
           <div class="field"><label>在线图标名或图片 URL <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noreferrer">在线图标库</a></label><div class="icon-field-row"><input name="icon" placeholder="mdi:nas"><button class="upload-button" type="button" id="open-icon-gallery-button">图库</button><button class="upload-button" type="button" id="upload-icon-button">上传图片</button></div><input class="file-input" id="upload-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon"></div>
           <div class="field full"><label>外网入口</label><input name="external_url" type="url" placeholder="https://example.com"></div>
-          <div class="field full"><label>内网入口</label><input name="internal_url" type="url" placeholder="http://192.168.x.x:8080"></div>
+          <div class="field full"><label>内网 IP 入口</label><input name="internal_url" type="url" placeholder="https://192.168.x.x/ui/#/login"></div>
+          <div class="field full"><label>内网域名入口</label><input name="internal_domain_url" type="url" placeholder="https://service-lan.example.com/ui/#/login"></div>
           <div class="field"><label>分组</label><select name="group_id">{{range .Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
           <div class="field"><label>标签</label><input name="tags" placeholder="docker, tools"></div>
           <div class="field full"><label>备注</label><textarea name="notes"></textarea></div>
@@ -1803,9 +1809,12 @@ const indexTemplate = `<!doctype html>
 	    const saveSortButton = document.querySelector('#save-sort-button');
 	    const saveGroupSortButton = document.querySelector('#save-group-sort-button');
 	    const accessModeButton = document.querySelector('#access-mode-button');
-    const accessModeIcon = document.querySelector('#access-mode-icon');
+    const accessModeLabel = document.querySelector('#access-mode-label');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
+    const accessModes = ['external', 'internal', 'internal_domain'];
+    const accessModeNames = { external: '外网入口', internal: '内网 IP 入口', internal_domain: '内网域名入口' };
+    const accessModeShortNames = { external: '外网', internal: 'IP', internal_domain: '域名' };
     let activeItem = null;
     let editMode = false;
     let accessMode = 'external';
@@ -1827,28 +1836,38 @@ const indexTemplate = `<!doctype html>
 	    function settingField(name) { return settingsForm.elements.namedItem(name); }
 	    function groupField(name) { return groupForm.elements.namedItem(name); }
     function showToast(message) { toast.textContent = message; toast.classList.add('is-open'); setTimeout(() => toast.classList.remove('is-open'), 1800); }
-    function itemURL(type) { return type === 'internal' ? activeItem?.dataset.internalUrl : activeItem?.dataset.externalUrl; }
+    function itemURL(type) {
+      if (type === 'internal') return activeItem?.dataset.internalUrl;
+      if (type === 'internal_domain') return activeItem?.dataset.internalDomainUrl;
+      return activeItem?.dataset.externalUrl;
+    }
     function openHref(url) { return url || '#'; }
     function openRedirectHref(url) { return url ? '/open?url=' + encodeURIComponent(url) : '#'; }
     function openEntryURL(url) { url ? window.open(openRedirectHref(url), '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
     function preferredURL(item, mode) {
       const internalURL = item.dataset.internalUrl || '';
+      const internalDomainURL = item.dataset.internalDomainUrl || '';
       const externalURL = item.dataset.externalUrl || '';
-      if (mode === 'internal') return internalURL || externalURL;
-      return externalURL || internalURL;
+      if (mode === 'internal') return internalURL || internalDomainURL || externalURL;
+      if (mode === 'internal_domain') return internalDomainURL || internalURL || externalURL;
+      return externalURL || internalURL || internalDomainURL;
     }
     function savedAccessMode() {
       try {
-        return localStorage.getItem(accessModeKey) === 'internal' ? 'internal' : 'external';
+        const mode = localStorage.getItem(accessModeKey);
+        return accessModes.includes(mode) ? mode : 'external';
       } catch (_) {
         return 'external';
       }
     }
     function setAccessMode(mode, notify) {
-      accessMode = mode === 'internal' ? 'internal' : 'external';
+      accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
-      accessModeIcon.innerHTML = accessMode === 'internal' ? {{iconJSON "mdi:lan"}} : {{iconJSON "mdi:web"}};
+      const nextMode = accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length];
+      const modeHint = '当前：' + accessModeNames[accessMode] + '；点击切换为' + accessModeNames[nextMode];
+      accessModeButton.title = modeHint;
+      accessModeButton.setAttribute('aria-label', modeHint);
+      accessModeLabel.textContent = accessModeShortNames[accessMode];
       for (const item of items) {
         const link = item.querySelector('.icon-button');
         const url = preferredURL(item, accessMode);
@@ -1856,9 +1875,9 @@ const indexTemplate = `<!doctype html>
         link.dataset.activeUrlType = accessMode;
       }
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
-      if (notify) showToast(accessMode === 'internal' ? '已切换到内网入口' : '已切换到外网入口');
+      if (notify) showToast('已切换到' + accessModeNames[accessMode]);
     }
-    function toggleAccessMode() { setAccessMode(accessMode === 'internal' ? 'external' : 'internal', true); }
+    function toggleAccessMode() { setAccessMode(accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length], true); }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
@@ -1924,6 +1943,7 @@ const indexTemplate = `<!doctype html>
       field('icon').value = '';
       field('external_url').value = '';
       field('internal_url').value = '';
+      field('internal_domain_url').value = '';
       field('group_id').value = groupID || groups[0]?.dataset.groupId || '';
       field('tags').value = '';
       field('notes').value = '';
@@ -1951,6 +1971,7 @@ const indexTemplate = `<!doctype html>
       field('icon').value = item.dataset.iconValue || '';
       field('external_url').value = item.dataset.externalUrl || '';
       field('internal_url').value = item.dataset.internalUrl || '';
+      field('internal_domain_url').value = item.dataset.internalDomainUrl || '';
       field('group_id').value = item.dataset.groupId || '';
       field('tags').value = item.dataset.tags || '';
       field('notes').value = item.dataset.notes || '';
@@ -2325,6 +2346,7 @@ const indexTemplate = `<!doctype html>
         icon: field('icon').value,
         external_url: field('external_url').value,
         internal_url: field('internal_url').value,
+        internal_domain_url: field('internal_domain_url').value,
         group_id: field('group_id').value,
         tags: field('tags').value.split(',').map(v => v.trim()).filter(Boolean),
         notes: field('notes').value,
@@ -2807,9 +2829,11 @@ const indexTemplate = `<!doctype html>
       if (!button || !activeItem) return;
       const action = button.dataset.action;
       if (action === 'open-external') { const url = itemURL('external'); url ? openEntryURL(url) : showToast('没有外网入口'); }
-      if (action === 'open-internal') { const url = itemURL('internal'); url ? openEntryURL(url) : showToast('没有内网入口'); }
+      if (action === 'open-internal') { const url = itemURL('internal'); url ? openEntryURL(url) : showToast('没有内网 IP 入口'); }
+      if (action === 'open-internal-domain') { const url = itemURL('internal_domain'); url ? openEntryURL(url) : showToast('没有内网域名入口'); }
       if (action === 'copy-external') copyText(itemURL('external'));
       if (action === 'copy-internal') copyText(itemURL('internal'));
+      if (action === 'copy-internal-domain') copyText(itemURL('internal_domain'));
       if (action === 'edit') openEdit(activeItem);
       if (action === 'delete') {
         closeMenu();
@@ -3118,6 +3142,7 @@ const loginTemplate = `<!doctype html>
     .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .tool-button:hover { background: #242424; }
     .tool-button .inline-icon { font-size: 22px; }
+    .access-mode-label { font-size: 13px; font-weight: 700; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
@@ -3224,7 +3249,7 @@ const loginTemplate = `<!doctype html>
 </head>
 <body>
   <div class="top-tools">
-    <button class="tool-button" type="button" id="access-mode-button" title="当前使用外网入口"><span id="access-mode-icon">{{icon "mdi:web"}}</span></button>
+    <button class="tool-button" type="button" id="access-mode-button" title="当前：外网入口" aria-label="当前：外网入口"><span class="access-mode-label" id="access-mode-label">外网</span></button>
   </div>
   <main>
     <form method="post" action="/login?return_to={{.ReturnTo}}">
@@ -3244,21 +3269,28 @@ const loginTemplate = `<!doctype html>
   <script>
     const accessModeKey = 'home-nav.access-mode';
     const accessModeButton = document.querySelector('#access-mode-button');
-    const accessModeIcon = document.querySelector('#access-mode-icon');
+    const accessModeLabel = document.querySelector('#access-mode-label');
+    const accessModes = ['external', 'internal', 'internal_domain'];
+    const accessModeNames = { external: '外网入口', internal: '内网 IP 入口', internal_domain: '内网域名入口' };
+    const accessModeShortNames = { external: '外网', internal: 'IP', internal_domain: '域名' };
     const passwordHiddenIcon = {{iconJSON "mdi:eye"}};
     const passwordVisibleIcon = {{iconJSON "mdi:eye-off"}};
     function savedAccessMode() {
       try {
-        return localStorage.getItem(accessModeKey) === 'internal' ? 'internal' : 'external';
+        const mode = localStorage.getItem(accessModeKey);
+        return accessModes.includes(mode) ? mode : 'external';
       } catch (_) {
         return 'external';
       }
     }
     function setAccessMode(mode) {
-      const accessMode = mode === 'internal' ? 'internal' : 'external';
+      const accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      accessModeButton.title = accessMode === 'internal' ? '当前使用内网入口' : '当前使用外网入口';
-      accessModeIcon.innerHTML = accessMode === 'internal' ? {{iconJSON "mdi:lan"}} : {{iconJSON "mdi:web"}};
+      const nextMode = accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length];
+      const modeHint = '当前：' + accessModeNames[accessMode] + '；点击切换为' + accessModeNames[nextMode];
+      accessModeButton.title = modeHint;
+      accessModeButton.setAttribute('aria-label', modeHint);
+      accessModeLabel.textContent = accessModeShortNames[accessMode];
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
     }
     for (const button of document.querySelectorAll('[data-password-toggle]')) {
@@ -3273,7 +3305,7 @@ const loginTemplate = `<!doctype html>
         button.innerHTML = visible ? passwordVisibleIcon : passwordHiddenIcon;
       });
     }
-    accessModeButton.addEventListener('click', () => setAccessMode(document.body.dataset.accessMode === 'internal' ? 'external' : 'internal'));
+    accessModeButton.addEventListener('click', () => setAccessMode(accessModes[(accessModes.indexOf(document.body.dataset.accessMode) + 1) % accessModes.length]));
     setAccessMode(savedAccessMode());
   </script>
 </body>

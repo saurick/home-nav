@@ -28,7 +28,8 @@ groups:
         name: Dockge
         description: Docker Compose 管理入口，只提供跳转链接
         icon_text: D
-        internal_url: http://dockge.example.local
+        internal_url: https://192.168.1.10:5001
+        internal_domain_url: https://dockge-lan.example.test
         external_url: https://dockge.example.com
         tags:
           - docker

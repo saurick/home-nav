@@ -70,6 +70,7 @@ func renderConfigYAML(cfg *Config) string {
 			line(&b, 4, "icon_text: %s", yamlString(service.IconText))
 			line(&b, 4, "icon: %s", yamlString(service.Icon))
 			line(&b, 4, "internal_url: %s", yamlString(service.InternalURL))
+			line(&b, 4, "internal_domain_url: %s", yamlString(service.InternalDomainURL))
 			line(&b, 4, "external_url: %s", yamlString(service.ExternalURL))
 			if len(service.Tags) == 0 {
 				line(&b, 4, "tags: []")

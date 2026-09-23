@@ -58,18 +58,19 @@ type Group struct {
 }
 
 type Service struct {
-	ID          string      `yaml:"id"`
-	Name        string      `yaml:"name"`
-	Description string      `yaml:"description"`
-	IconText    string      `yaml:"icon_text"`
-	Icon        string      `yaml:"icon"`
-	InternalURL string      `yaml:"internal_url"`
-	ExternalURL string      `yaml:"external_url"`
-	Tags        []string    `yaml:"tags"`
-	Notes       string      `yaml:"notes"`
-	Health      HealthCheck `yaml:"health"`
-	GroupID     string      `yaml:"-"`
-	GroupName   string      `yaml:"-"`
+	ID                string      `yaml:"id"`
+	Name              string      `yaml:"name"`
+	Description       string      `yaml:"description"`
+	IconText          string      `yaml:"icon_text"`
+	Icon              string      `yaml:"icon"`
+	InternalURL       string      `yaml:"internal_url"`
+	InternalDomainURL string      `yaml:"internal_domain_url"`
+	ExternalURL       string      `yaml:"external_url"`
+	Tags              []string    `yaml:"tags"`
+	Notes             string      `yaml:"notes"`
+	Health            HealthCheck `yaml:"health"`
+	GroupID           string      `yaml:"-"`
+	GroupName         string      `yaml:"-"`
 }
 
 func (s Service) DisplayIconText() string {
@@ -109,7 +110,10 @@ func (s Service) DefaultURL() string {
 	if s.ExternalURL != "" {
 		return s.ExternalURL
 	}
-	return s.InternalURL
+	if s.InternalURL != "" {
+		return s.InternalURL
+	}
+	return s.InternalDomainURL
 }
 
 type HealthCheck struct {
@@ -316,6 +320,7 @@ func normalizeService(service *Service, groupID, groupName string) error {
 	service.IconText = strings.TrimSpace(service.IconText)
 	service.Icon = strings.TrimSpace(service.Icon)
 	service.InternalURL = strings.TrimSpace(service.InternalURL)
+	service.InternalDomainURL = strings.TrimSpace(service.InternalDomainURL)
 	service.ExternalURL = strings.TrimSpace(service.ExternalURL)
 	service.Notes = strings.TrimSpace(service.Notes)
 	service.GroupID = groupID
@@ -327,11 +332,16 @@ func normalizeService(service *Service, groupID, groupName string) error {
 	if service.Name == "" {
 		return fmt.Errorf("name 不能为空")
 	}
-	if service.InternalURL == "" && service.ExternalURL == "" {
-		return fmt.Errorf("internal_url 和 external_url 至少需要配置一个")
+	if service.InternalURL == "" && service.InternalDomainURL == "" && service.ExternalURL == "" {
+		return fmt.Errorf("internal_url、internal_domain_url 和 external_url 至少需要配置一个")
 	}
 	if service.InternalURL != "" {
 		if err := validateWebURL("internal_url", service.InternalURL); err != nil {
+			return err
+		}
+	}
+	if service.InternalDomainURL != "" {
+		if err := validateWebURL("internal_domain_url", service.InternalDomainURL); err != nil {
 			return err
 		}
 	}
