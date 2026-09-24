@@ -66,6 +66,7 @@ docker compose -f deploy/docker-compose.yml up -d
 - `groups[].services[]` 是导航入口唯一真源。
 - 每个服务至少配置 `id`、`name`、一个入口 URL 和 `health.type`。
 - 入口可分别填写 `internal_url`（内网 IP）、`internal_domain_url`（内网域名）和 `external_url`（外网）。三个字段都接受完整的 HTTP 或 HTTPS URL，旧配置的 `internal_url` 保持有效。
+- 页面右上角的“访问入口”下拉框可直接选外网、内网 IP 或内网域名；选择会保存在当前浏览器，缺少所选地址的服务会回退到其已配置的可用地址。
 - 健康检查支持 `disabled`、`http` 和 `tcp`。
 - 后端按 `check_interval` 定时刷新状态缓存，页面和 `/api/status` 不会实时探测每个服务。
 - 配置解析会拒绝未知字段、重复 ID、非法 URL 和缺失健康检查参数。

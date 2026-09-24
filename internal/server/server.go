@@ -1447,7 +1447,12 @@ const indexTemplate = `<!doctype html>
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button .inline-icon { font-size: 22px; }
-	    .access-mode-label { font-size: 13px; font-weight: 700; }
+	    .access-mode-control { position: relative; display: block; }
+	    .access-mode-control::after { content: '⌄'; position: absolute; right: 12px; top: 10px; font-size: 22px; line-height: 1; pointer-events: none; }
+	    .access-mode-select { width: 112px; height: 48px; padding: 0 28px 0 13px; appearance: none; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: var(--control-shadow); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
+	    .access-mode-select:hover { background: var(--control-bg-hover); }
+	    .access-mode-select:focus-visible { outline: 3px solid rgba(103, 224, 182, .55); outline-offset: 2px; }
+	    .access-mode-select option { color: #111; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1591,7 +1596,10 @@ const indexTemplate = `<!doctype html>
     .toast.is-open { display: block; }
     @media (max-width: 760px) {
       .shell { width: min(100vw - 24px, 1240px); padding-top: 92px; }
-      .top-tools { top: 12px; right: 12px; }
+      .top-tools { top: 12px; right: 12px; max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+      .top-tools .tool-button { width: 42px; height: 42px; }
+      .access-mode-select { width: 102px; height: 42px; padding-left: 10px; font-size: 13px; }
+      .access-mode-control::after { top: 7px; }
       .group-title { align-items: flex-start; }
       .group-actions { padding-top: 2px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
@@ -1623,11 +1631,14 @@ const indexTemplate = `<!doctype html>
       .form-actions { justify-content: stretch; }
       .save-button, .secondary-button { width: 100%; }
     }
+    @media (max-width: 350px) {
+      .shell { padding-top: 116px; }
+    }
   </style>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
-	    <button class="tool-button" type="button" id="access-mode-button" title="当前：外网入口" aria-label="当前：外网入口"><span class="access-mode-label" id="access-mode-label">外网</span></button>
+	    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="访问入口"><option value="external">外网</option><option value="internal">内网 IP</option><option value="internal_domain">内网域名</option></select></label>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-gallery-button" title="图库">{{icon "mdi:image-multiple-outline"}}</button>
@@ -1808,13 +1819,11 @@ const indexTemplate = `<!doctype html>
 	    const deleteConfirmName = document.querySelector('#delete-confirm-name');
 	    const saveSortButton = document.querySelector('#save-sort-button');
 	    const saveGroupSortButton = document.querySelector('#save-group-sort-button');
-	    const accessModeButton = document.querySelector('#access-mode-button');
-    const accessModeLabel = document.querySelector('#access-mode-label');
+	    const accessModeSelect = document.querySelector('#access-mode-select');
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
     const accessModes = ['external', 'internal', 'internal_domain'];
     const accessModeNames = { external: '外网入口', internal: '内网 IP 入口', internal_domain: '内网域名入口' };
-    const accessModeShortNames = { external: '外网', internal: 'IP', internal_domain: '域名' };
     let activeItem = null;
     let editMode = false;
     let accessMode = 'external';
@@ -1863,11 +1872,7 @@ const indexTemplate = `<!doctype html>
     function setAccessMode(mode, notify) {
       accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      const nextMode = accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length];
-      const modeHint = '当前：' + accessModeNames[accessMode] + '；点击切换为' + accessModeNames[nextMode];
-      accessModeButton.title = modeHint;
-      accessModeButton.setAttribute('aria-label', modeHint);
-      accessModeLabel.textContent = accessModeShortNames[accessMode];
+      accessModeSelect.value = accessMode;
       for (const item of items) {
         const link = item.querySelector('.icon-button');
         const url = preferredURL(item, accessMode);
@@ -1877,7 +1882,6 @@ const indexTemplate = `<!doctype html>
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
       if (notify) showToast('已切换到' + accessModeNames[accessMode]);
     }
-    function toggleAccessMode() { setAccessMode(accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length], true); }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
@@ -2841,7 +2845,7 @@ const indexTemplate = `<!doctype html>
       }
     });
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
-	    accessModeButton.addEventListener('click', toggleAccessMode);
+	    accessModeSelect.addEventListener('change', () => setAccessMode(accessModeSelect.value, true));
 	    saveSortButton.addEventListener('click', () => saveSort());
     document.querySelector('#open-groups-button').addEventListener('click', openGroups);
     document.querySelector('#groups-close').addEventListener('click', closeGroups);
@@ -3142,7 +3146,12 @@ const loginTemplate = `<!doctype html>
     .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .tool-button:hover { background: #242424; }
     .tool-button .inline-icon { font-size: 22px; }
-    .access-mode-label { font-size: 13px; font-weight: 700; }
+    .access-mode-control { position: relative; display: block; }
+    .access-mode-control::after { content: '⌄'; position: absolute; right: 12px; top: 10px; font-size: 22px; line-height: 1; pointer-events: none; }
+    .access-mode-select { width: 112px; height: 48px; padding: 0 28px 0 13px; appearance: none; border: 0; border-radius: 8px; background: #141414; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .access-mode-select:hover { background: #242424; }
+    .access-mode-select:focus-visible { outline: 3px solid rgba(103, 224, 182, .55); outline-offset: 2px; }
+    .access-mode-select option { color: #111; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
@@ -3249,7 +3258,7 @@ const loginTemplate = `<!doctype html>
 </head>
 <body>
   <div class="top-tools">
-    <button class="tool-button" type="button" id="access-mode-button" title="当前：外网入口" aria-label="当前：外网入口"><span class="access-mode-label" id="access-mode-label">外网</span></button>
+    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="访问入口"><option value="external">外网</option><option value="internal">内网 IP</option><option value="internal_domain">内网域名</option></select></label>
   </div>
   <main>
     <form method="post" action="/login?return_to={{.ReturnTo}}">
@@ -3268,11 +3277,8 @@ const loginTemplate = `<!doctype html>
   </main>
   <script>
     const accessModeKey = 'home-nav.access-mode';
-    const accessModeButton = document.querySelector('#access-mode-button');
-    const accessModeLabel = document.querySelector('#access-mode-label');
+    const accessModeSelect = document.querySelector('#access-mode-select');
     const accessModes = ['external', 'internal', 'internal_domain'];
-    const accessModeNames = { external: '外网入口', internal: '内网 IP 入口', internal_domain: '内网域名入口' };
-    const accessModeShortNames = { external: '外网', internal: 'IP', internal_domain: '域名' };
     const passwordHiddenIcon = {{iconJSON "mdi:eye"}};
     const passwordVisibleIcon = {{iconJSON "mdi:eye-off"}};
     function savedAccessMode() {
@@ -3286,11 +3292,7 @@ const loginTemplate = `<!doctype html>
     function setAccessMode(mode) {
       const accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      const nextMode = accessModes[(accessModes.indexOf(accessMode) + 1) % accessModes.length];
-      const modeHint = '当前：' + accessModeNames[accessMode] + '；点击切换为' + accessModeNames[nextMode];
-      accessModeButton.title = modeHint;
-      accessModeButton.setAttribute('aria-label', modeHint);
-      accessModeLabel.textContent = accessModeShortNames[accessMode];
+      accessModeSelect.value = accessMode;
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
     }
     for (const button of document.querySelectorAll('[data-password-toggle]')) {
@@ -3305,7 +3307,7 @@ const loginTemplate = `<!doctype html>
         button.innerHTML = visible ? passwordVisibleIcon : passwordHiddenIcon;
       });
     }
-    accessModeButton.addEventListener('click', () => setAccessMode(accessModes[(accessModes.indexOf(document.body.dataset.accessMode) + 1) % accessModes.length]));
+    accessModeSelect.addEventListener('change', () => setAccessMode(accessModeSelect.value));
     setAccessMode(savedAccessMode());
   </script>
 </body>
