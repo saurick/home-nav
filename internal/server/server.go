@@ -1437,8 +1437,8 @@ const indexTemplate = `<!doctype html>
     body { margin: 0; min-height: 100vh; background: var(--bg); background-repeat: no-repeat; color: var(--text); }
     a { color: inherit; text-decoration: none; }
     button, input, textarea, select { font: inherit; }
-    .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 52px 0 80px; }
-    .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
+    .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 24px 0 80px; }
+    .top-tools { width: min(1240px, calc(100vw - 36px)); margin: 22px auto 0; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
     .top-tools form { margin: 0; }
     .tool-button { width: 48px; height: 48px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: var(--control-shadow); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
 	    .tool-button:hover { background: var(--control-bg-hover); }
@@ -1447,12 +1447,12 @@ const indexTemplate = `<!doctype html>
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button .inline-icon { font-size: 22px; }
-	    .access-mode-control { position: relative; display: block; }
-	    .access-mode-control::after { content: '⌄'; position: absolute; right: 12px; top: 10px; font-size: 22px; line-height: 1; pointer-events: none; }
-	    .access-mode-select { width: 112px; height: 48px; padding: 0 28px 0 13px; appearance: none; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: var(--control-shadow); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
-	    .access-mode-select:hover { background: var(--control-bg-hover); }
-	    .access-mode-select:focus-visible { outline: 3px solid rgba(103, 224, 182, .55); outline-offset: 2px; }
-	    .access-mode-select option { color: #111; }
+	    .access-mode-control { position: relative; display: block; flex: 0 0 auto; }
+	    .access-mode-control::after { content: ''; position: absolute; top: 50%; right: 15px; width: 7px; height: 7px; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+	    .access-mode-select { width: 142px; height: 48px; padding: 0 34px 0 14px; appearance: none; color-scheme: dark; border: 1px solid var(--control-border); border-radius: 12px; background: var(--control-bg); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: var(--control-shadow); }
+	    .access-mode-select:hover { border-color: rgba(255,255,255,.45); background: var(--control-bg-hover); }
+	    .access-mode-select:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,182,.18); }
+	    .access-mode-select option { background: #1c211e; color: #f7f7f7; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1595,11 +1595,10 @@ const indexTemplate = `<!doctype html>
     .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #202026; color: #fff; border: 1px solid #555761; border-radius: 999px; padding: 10px 18px; display: none; z-index: 80; }
     .toast.is-open { display: block; }
     @media (max-width: 760px) {
-      .shell { width: min(100vw - 24px, 1240px); padding-top: 92px; }
-      .top-tools { top: 12px; right: 12px; max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+      .shell { width: min(100vw - 24px, 1240px); padding-top: 24px; }
+      .top-tools { width: calc(100vw - 24px); margin-top: 12px; gap: 6px; }
       .top-tools .tool-button { width: 42px; height: 42px; }
-      .access-mode-select { width: 102px; height: 42px; padding-left: 10px; font-size: 13px; }
-      .access-mode-control::after { top: 7px; }
+      .access-mode-select { width: 132px; height: 42px; padding-left: 11px; font-size: 13px; }
       .group-title { align-items: flex-start; }
       .group-actions { padding-top: 2px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
@@ -1631,14 +1630,11 @@ const indexTemplate = `<!doctype html>
       .form-actions { justify-content: stretch; }
       .save-button, .secondary-button { width: 100%; }
     }
-    @media (max-width: 350px) {
-      .shell { padding-top: 116px; }
-    }
   </style>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
-	    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="访问入口"><option value="external">外网</option><option value="internal">内网 IP</option><option value="internal_domain">内网域名</option></select></label>
+	    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="优先访问入口"><option value="external">外网优先</option><option value="internal">内网 IP 优先</option><option value="internal_domain">内网域名优先</option></select></label>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-gallery-button" title="图库">{{icon "mdi:image-multiple-outline"}}</button>
@@ -1853,14 +1849,13 @@ const indexTemplate = `<!doctype html>
     function openHref(url) { return url || '#'; }
     function openRedirectHref(url) { return url ? '/open?url=' + encodeURIComponent(url) : '#'; }
     function openEntryURL(url) { url ? window.open(openRedirectHref(url), '_blank', 'noopener,noreferrer') : showToast('没有可用入口'); }
-    function preferredURL(item, mode) {
-      const internalURL = item.dataset.internalUrl || '';
-      const internalDomainURL = item.dataset.internalDomainUrl || '';
-      const externalURL = item.dataset.externalUrl || '';
-      if (mode === 'internal') return internalURL || internalDomainURL || externalURL;
-      if (mode === 'internal_domain') return internalDomainURL || internalURL || externalURL;
-      return externalURL || internalURL || internalDomainURL;
+    function preferredEntry(item, mode) {
+      const urls = { external: item.dataset.externalUrl || '', internal: item.dataset.internalUrl || '', internal_domain: item.dataset.internalDomainUrl || '' };
+      const order = mode === 'internal' ? ['internal', 'internal_domain', 'external'] : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
+      const type = order.find(candidate => urls[candidate]) || '';
+      return { url: type ? urls[type] : '', type };
     }
+    function preferredURL(item, mode) { return preferredEntry(item, mode).url; }
     function savedAccessMode() {
       try {
         const mode = localStorage.getItem(accessModeKey);
@@ -1875,12 +1870,15 @@ const indexTemplate = `<!doctype html>
       accessModeSelect.value = accessMode;
       for (const item of items) {
         const link = item.querySelector('.icon-button');
-        const url = preferredURL(item, accessMode);
-        link.href = openHref(url);
-        link.dataset.activeUrlType = accessMode;
+        const entry = preferredEntry(item, accessMode);
+        link.href = openHref(entry.url);
+        link.dataset.activeUrlType = entry.type;
+        const routeHint = entry.type && entry.type !== accessMode ? '未配置' + accessModeNames[accessMode] + '，使用' + accessModeNames[entry.type] : accessModeNames[entry.type] || '没有可用入口';
+        link.title = routeHint;
+        link.setAttribute('aria-label', item.dataset.name + '，' + routeHint);
       }
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
-      if (notify) showToast('已切换到' + accessModeNames[accessMode]);
+      if (notify) showToast(accessModeNames[accessMode] + '优先，缺失时回退');
     }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
@@ -3147,11 +3145,11 @@ const loginTemplate = `<!doctype html>
     .tool-button:hover { background: #242424; }
     .tool-button .inline-icon { font-size: 22px; }
     .access-mode-control { position: relative; display: block; }
-    .access-mode-control::after { content: '⌄'; position: absolute; right: 12px; top: 10px; font-size: 22px; line-height: 1; pointer-events: none; }
-    .access-mode-select { width: 112px; height: 48px; padding: 0 28px 0 13px; appearance: none; border: 0; border-radius: 8px; background: #141414; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
-    .access-mode-select:hover { background: #242424; }
-    .access-mode-select:focus-visible { outline: 3px solid rgba(103, 224, 182, .55); outline-offset: 2px; }
-    .access-mode-select option { color: #111; }
+    .access-mode-control::after { content: ''; position: absolute; top: 50%; right: 15px; width: 7px; height: 7px; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+    .access-mode-select { width: 142px; height: 48px; padding: 0 34px 0 14px; appearance: none; color-scheme: dark; border: 1px solid #4c4d56; border-radius: 12px; background: #141414; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .access-mode-select:hover { border-color: #73777b; background: #242424; }
+    .access-mode-select:focus-visible { outline: 0; border-color: #67e0b6; box-shadow: 0 0 0 3px rgba(103,224,182,.18); }
+    .access-mode-select option { background: #1c211e; color: #f7f7f7; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
@@ -3258,7 +3256,7 @@ const loginTemplate = `<!doctype html>
 </head>
 <body>
   <div class="top-tools">
-    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="访问入口"><option value="external">外网</option><option value="internal">内网 IP</option><option value="internal_domain">内网域名</option></select></label>
+    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="优先访问入口"><option value="external">外网优先</option><option value="internal">内网 IP 优先</option><option value="internal_domain">内网域名优先</option></select></label>
   </div>
   <main>
     <form method="post" action="/login?return_to={{.ReturnTo}}">

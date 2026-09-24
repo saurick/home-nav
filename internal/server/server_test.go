@@ -99,7 +99,7 @@ func TestIndexIncludesAccessModeSelect(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-select\"", "<option value=\"internal\">内网 IP</option>", "<option value=\"internal_domain\">内网域名</option>", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
+	for _, want := range []string{"id=\"access-mode-select\"", "<option value=\"internal\">内网 IP 优先</option>", "<option value=\"internal_domain\">内网域名优先</option>", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
