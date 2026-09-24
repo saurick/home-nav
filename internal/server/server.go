@@ -1447,12 +1447,20 @@ const indexTemplate = `<!doctype html>
 	    .sort-button { display: none; }
 	    body.is-edit-mode .sort-button { display: grid; }
 	    .tool-button .inline-icon { font-size: 22px; }
-	    .access-mode-control { position: relative; display: block; flex: 0 0 auto; }
-	    .access-mode-control::after { content: ''; position: absolute; top: 50%; right: 15px; width: 7px; height: 7px; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
-	    .access-mode-select { width: 142px; height: 48px; padding: 0 34px 0 14px; appearance: none; color-scheme: dark; border: 1px solid var(--control-border); border-radius: 12px; background: var(--control-bg); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: var(--control-shadow); }
-	    .access-mode-select:hover { border-color: rgba(255,255,255,.45); background: var(--control-bg-hover); }
-	    .access-mode-select:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,182,.18); }
-	    .access-mode-select option { background: #1c211e; color: #f7f7f7; }
+	    .access-mode-control { position: relative; flex: 0 0 auto; z-index: 40; }
+	    .access-mode-trigger { width: 142px; height: 48px; padding: 0 15px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--control-border); border-radius: 12px; background: var(--control-bg); color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; box-shadow: var(--control-shadow); }
+	    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: rgba(255,255,255,.45); background: var(--control-bg-hover); }
+	    .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	    .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-2px) rotate(45deg); }
+	    .access-mode-trigger[aria-expanded="true"] .access-mode-chevron { transform: translateY(2px) rotate(225deg); }
+	    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid #4c4d56; border-radius: 12px; background: #1c211e; box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+	    .access-mode-menu[hidden] { display: none; }
+	    .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: #f7f7f7; font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
+	    .access-mode-option:hover, .access-mode-option:focus-visible { background: #29342f; }
+	    .access-mode-option[aria-checked="true"] { background: #263b30; font-weight: 600; }
+	    .access-mode-option[aria-checked="true"]:hover, .access-mode-option[aria-checked="true"]:focus-visible { background: #304d3b; }
+	    .access-mode-option::after { content: ''; width: 6px; height: 10px; margin: -3px 4px 0 0; flex: 0 0 auto; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg); opacity: 0; }
+	    .access-mode-option[aria-checked="true"]::after { opacity: 1; }
     .groups { display: grid; gap: 56px; }
     .group { display: grid; gap: 24px; }
     .group-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1598,7 +1606,10 @@ const indexTemplate = `<!doctype html>
       .shell { width: min(100vw - 24px, 1240px); padding-top: 24px; }
       .top-tools { width: calc(100vw - 24px); margin-top: 12px; gap: 6px; }
       .top-tools .tool-button { width: 42px; height: 42px; }
-      .access-mode-select { width: 132px; height: 42px; padding-left: 11px; font-size: 13px; }
+      .access-mode-trigger { width: 132px; height: 42px; padding-left: 11px; font-size: 13px; }
+      .access-mode-option { min-height: 44px; }
+      .access-mode-control.is-open { flex-basis: 100%; display: grid; justify-items: end; }
+      .access-mode-control.is-open .access-mode-menu { position: static; margin-top: 6px; }
       .group-title { align-items: flex-start; }
       .group-actions { padding-top: 2px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
@@ -1634,7 +1645,14 @@ const indexTemplate = `<!doctype html>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
-	    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="优先访问入口"><option value="external">外网优先</option><option value="internal">内网 IP 优先</option><option value="internal_domain">内网域名优先</option></select></label>
+	    <div class="access-mode-control" id="access-mode-control">
+	      <button class="access-mode-trigger" id="access-mode-button" type="button" aria-label="优先访问入口，当前外网优先" aria-haspopup="menu" aria-expanded="false" aria-controls="access-mode-menu"><span id="access-mode-label">外网优先</span><span class="access-mode-chevron" aria-hidden="true"></span></button>
+	      <div class="access-mode-menu" id="access-mode-menu" role="menu" aria-label="优先访问入口" hidden>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1">外网优先</button>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1">内网 IP 优先</button>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1">内网域名优先</button>
+	      </div>
+	    </div>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-groups-button" title="分组管理">{{icon "mdi:folder-cog-outline"}}</button>
 	    <button class="tool-button" type="button" id="open-gallery-button" title="图库">{{icon "mdi:image-multiple-outline"}}</button>
@@ -1815,7 +1833,11 @@ const indexTemplate = `<!doctype html>
 	    const deleteConfirmName = document.querySelector('#delete-confirm-name');
 	    const saveSortButton = document.querySelector('#save-sort-button');
 	    const saveGroupSortButton = document.querySelector('#save-group-sort-button');
-	    const accessModeSelect = document.querySelector('#access-mode-select');
+	    const accessModeControl = document.querySelector('#access-mode-control');
+	    const accessModeButton = document.querySelector('#access-mode-button');
+	    const accessModeLabel = document.querySelector('#access-mode-label');
+	    const accessModeMenu = document.querySelector('#access-mode-menu');
+	    const accessModeOptions = [...accessModeMenu.querySelectorAll('[data-access-mode]')];
     const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
     const accessModeKey = 'home-nav.access-mode';
     const accessModes = ['external', 'internal', 'internal_domain'];
@@ -1867,7 +1889,11 @@ const indexTemplate = `<!doctype html>
     function setAccessMode(mode, notify) {
       accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      accessModeSelect.value = accessMode;
+      const selectedOption = accessModeOptions.find(option => option.dataset.accessMode === accessMode);
+      const label = selectedOption.textContent.trim();
+      accessModeLabel.textContent = label;
+      accessModeButton.setAttribute('aria-label', '优先访问入口，当前' + label);
+      for (const option of accessModeOptions) option.setAttribute('aria-checked', String(option === selectedOption));
       for (const item of items) {
         const link = item.querySelector('.icon-button');
         const entry = preferredEntry(item, accessMode);
@@ -1879,6 +1905,60 @@ const indexTemplate = `<!doctype html>
       }
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
       if (notify) showToast(accessModeNames[accessMode] + '优先，缺失时回退');
+    }
+    function openAccessModeMenu(index) {
+      accessModeMenu.hidden = false;
+      accessModeButton.setAttribute('aria-expanded', 'true');
+      accessModeControl.classList.add('is-open');
+      const selectedIndex = accessModeOptions.findIndex(option => option.dataset.accessMode === accessMode);
+      accessModeOptions[index ?? selectedIndex].focus();
+    }
+    function closeAccessModeMenu(restoreFocus) {
+      if (accessModeMenu.hidden) return;
+      accessModeMenu.hidden = true;
+      accessModeButton.setAttribute('aria-expanded', 'false');
+      accessModeControl.classList.remove('is-open');
+      if (restoreFocus) accessModeButton.focus();
+    }
+    function bindAccessModeMenu() {
+      accessModeButton.addEventListener('click', () => accessModeMenu.hidden ? openAccessModeMenu() : closeAccessModeMenu(true));
+      accessModeButton.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        openAccessModeMenu(event.key === 'ArrowUp' ? accessModeOptions.length - 1 : 0);
+      });
+      accessModeMenu.addEventListener('click', event => {
+        const option = event.target.closest('[data-access-mode]');
+        if (!option) return;
+        setAccessMode(option.dataset.accessMode, true);
+        closeAccessModeMenu(true);
+      });
+      accessModeMenu.addEventListener('keydown', event => {
+        if (event.key === 'Tab' && event.shiftKey) {
+          event.preventDefault();
+          closeAccessModeMenu(true);
+          return;
+        }
+        const index = accessModeOptions.indexOf(document.activeElement);
+        let next = index;
+        if (event.key === 'ArrowDown') next = (index + 1) % accessModeOptions.length;
+        else if (event.key === 'ArrowUp') next = (index - 1 + accessModeOptions.length) % accessModeOptions.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = accessModeOptions.length - 1;
+        else if (event.key === 'Escape') {
+          event.preventDefault();
+          closeAccessModeMenu(true);
+          return;
+        } else return;
+        event.preventDefault();
+        accessModeOptions[next].focus();
+      });
+      accessModeControl.addEventListener('focusout', event => {
+        if (!accessModeControl.contains(event.relatedTarget)) closeAccessModeMenu(false);
+      });
+      document.addEventListener('pointerdown', event => {
+        if (!accessModeControl.contains(event.target)) closeAccessModeMenu(false);
+      });
     }
     function onlineIconSrc(icon) {
       const parts = String(icon || '').split(':');
@@ -2843,7 +2923,7 @@ const indexTemplate = `<!doctype html>
       }
     });
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
-	    accessModeSelect.addEventListener('change', () => setAccessMode(accessModeSelect.value, true));
+	    bindAccessModeMenu();
 	    saveSortButton.addEventListener('click', () => saveSort());
     document.querySelector('#open-groups-button').addEventListener('click', openGroups);
     document.querySelector('#groups-close').addEventListener('click', closeGroups);
@@ -3144,12 +3224,20 @@ const loginTemplate = `<!doctype html>
     .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
     .tool-button:hover { background: #242424; }
     .tool-button .inline-icon { font-size: 22px; }
-    .access-mode-control { position: relative; display: block; }
-    .access-mode-control::after { content: ''; position: absolute; top: 50%; right: 15px; width: 7px; height: 7px; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
-    .access-mode-select { width: 142px; height: 48px; padding: 0 34px 0 14px; appearance: none; color-scheme: dark; border: 1px solid #4c4d56; border-radius: 12px; background: #141414; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
-    .access-mode-select:hover { border-color: #73777b; background: #242424; }
-    .access-mode-select:focus-visible { outline: 0; border-color: #67e0b6; box-shadow: 0 0 0 3px rgba(103,224,182,.18); }
-    .access-mode-select option { background: #1c211e; color: #f7f7f7; }
+    .access-mode-control { position: relative; }
+    .access-mode-trigger { width: 142px; height: 48px; padding: 0 15px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #4c4d56; border-radius: 12px; background: #141414; color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: #73777b; background: #242424; }
+    .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid #67e0b6; outline-offset: 2px; }
+    .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-2px) rotate(45deg); }
+    .access-mode-trigger[aria-expanded="true"] .access-mode-chevron { transform: translateY(2px) rotate(225deg); }
+    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid #4c4d56; border-radius: 12px; background: #1c211e; box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+    .access-mode-menu[hidden] { display: none; }
+    .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: #f7f7f7; font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
+    .access-mode-option:hover, .access-mode-option:focus-visible { background: #29342f; }
+    .access-mode-option[aria-checked="true"] { background: #263b30; font-weight: 600; }
+    .access-mode-option[aria-checked="true"]:hover, .access-mode-option[aria-checked="true"]:focus-visible { background: #304d3b; }
+    .access-mode-option::after { content: ''; width: 6px; height: 10px; margin: -3px 4px 0 0; flex: 0 0 auto; border-right: 2px solid #67e0b6; border-bottom: 2px solid #67e0b6; transform: rotate(45deg); opacity: 0; }
+    .access-mode-option[aria-checked="true"]::after { opacity: 1; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
@@ -3249,14 +3337,23 @@ const loginTemplate = `<!doctype html>
     }
     @media (max-width: 760px) {
       body { align-items: start; padding: 96px 18px 24px; }
+      body.access-mode-menu-open { padding-top: 252px; }
       .top-tools { top: 12px; right: 12px; }
+      .access-mode-option { min-height: 44px; }
       form { padding: 20px; }
     }
   </style>
 </head>
 <body>
   <div class="top-tools">
-    <label class="access-mode-control"><select class="access-mode-select" id="access-mode-select" aria-label="优先访问入口"><option value="external">外网优先</option><option value="internal">内网 IP 优先</option><option value="internal_domain">内网域名优先</option></select></label>
+    <div class="access-mode-control" id="access-mode-control">
+      <button class="access-mode-trigger" id="access-mode-button" type="button" aria-label="优先访问入口，当前外网优先" aria-haspopup="menu" aria-expanded="false" aria-controls="access-mode-menu"><span id="access-mode-label">外网优先</span><span class="access-mode-chevron" aria-hidden="true"></span></button>
+      <div class="access-mode-menu" id="access-mode-menu" role="menu" aria-label="优先访问入口" hidden>
+        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1">外网优先</button>
+        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1">内网 IP 优先</button>
+        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1">内网域名优先</button>
+      </div>
+    </div>
   </div>
   <main>
     <form method="post" action="/login?return_to={{.ReturnTo}}">
@@ -3275,7 +3372,11 @@ const loginTemplate = `<!doctype html>
   </main>
   <script>
     const accessModeKey = 'home-nav.access-mode';
-    const accessModeSelect = document.querySelector('#access-mode-select');
+    const accessModeControl = document.querySelector('#access-mode-control');
+    const accessModeButton = document.querySelector('#access-mode-button');
+    const accessModeLabel = document.querySelector('#access-mode-label');
+    const accessModeMenu = document.querySelector('#access-mode-menu');
+    const accessModeOptions = [...accessModeMenu.querySelectorAll('[data-access-mode]')];
     const accessModes = ['external', 'internal', 'internal_domain'];
     const passwordHiddenIcon = {{iconJSON "mdi:eye"}};
     const passwordVisibleIcon = {{iconJSON "mdi:eye-off"}};
@@ -3290,8 +3391,66 @@ const loginTemplate = `<!doctype html>
     function setAccessMode(mode) {
       const accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
-      accessModeSelect.value = accessMode;
+      const selectedOption = accessModeOptions.find(option => option.dataset.accessMode === accessMode);
+      const label = selectedOption.textContent.trim();
+      accessModeLabel.textContent = label;
+      accessModeButton.setAttribute('aria-label', '优先访问入口，当前' + label);
+      for (const option of accessModeOptions) option.setAttribute('aria-checked', String(option === selectedOption));
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
+    }
+    function openAccessModeMenu(index) {
+      accessModeMenu.hidden = false;
+      accessModeButton.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('access-mode-menu-open');
+      const selectedIndex = accessModeOptions.findIndex(option => option.dataset.accessMode === document.body.dataset.accessMode);
+      accessModeOptions[index ?? selectedIndex].focus();
+    }
+    function closeAccessModeMenu(restoreFocus) {
+      if (accessModeMenu.hidden) return;
+      accessModeMenu.hidden = true;
+      accessModeButton.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('access-mode-menu-open');
+      if (restoreFocus) accessModeButton.focus();
+    }
+    function bindAccessModeMenu() {
+      accessModeButton.addEventListener('click', () => accessModeMenu.hidden ? openAccessModeMenu() : closeAccessModeMenu(true));
+      accessModeButton.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        openAccessModeMenu(event.key === 'ArrowUp' ? accessModeOptions.length - 1 : 0);
+      });
+      accessModeMenu.addEventListener('click', event => {
+        const option = event.target.closest('[data-access-mode]');
+        if (!option) return;
+        setAccessMode(option.dataset.accessMode);
+        closeAccessModeMenu(true);
+      });
+      accessModeMenu.addEventListener('keydown', event => {
+        if (event.key === 'Tab' && event.shiftKey) {
+          event.preventDefault();
+          closeAccessModeMenu(true);
+          return;
+        }
+        const index = accessModeOptions.indexOf(document.activeElement);
+        let next = index;
+        if (event.key === 'ArrowDown') next = (index + 1) % accessModeOptions.length;
+        else if (event.key === 'ArrowUp') next = (index - 1 + accessModeOptions.length) % accessModeOptions.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = accessModeOptions.length - 1;
+        else if (event.key === 'Escape') {
+          event.preventDefault();
+          closeAccessModeMenu(true);
+          return;
+        } else return;
+        event.preventDefault();
+        accessModeOptions[next].focus();
+      });
+      accessModeControl.addEventListener('focusout', event => {
+        if (!accessModeControl.contains(event.relatedTarget)) closeAccessModeMenu(false);
+      });
+      document.addEventListener('pointerdown', event => {
+        if (!accessModeControl.contains(event.target)) closeAccessModeMenu(false);
+      });
     }
     for (const button of document.querySelectorAll('[data-password-toggle]')) {
       const input = document.getElementById(button.dataset.target);
@@ -3305,7 +3464,7 @@ const loginTemplate = `<!doctype html>
         button.innerHTML = visible ? passwordVisibleIcon : passwordHiddenIcon;
       });
     }
-    accessModeSelect.addEventListener('change', () => setAccessMode(accessModeSelect.value));
+    bindAccessModeMenu();
     setAccessMode(savedAccessMode());
   </script>
 </body>

@@ -85,7 +85,7 @@ func TestStatusEndpointReturnsCachedStatus(t *testing.T) {
 	}
 }
 
-func TestIndexIncludesAccessModeSelect(t *testing.T) {
+func TestIndexIncludesAccessModeMenu(t *testing.T) {
 	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -99,7 +99,7 @@ func TestIndexIncludesAccessModeSelect(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-select\"", "<option value=\"internal\">内网 IP 优先</option>", "<option value=\"internal_domain\">内网域名优先</option>", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
+	for _, want := range []string{"id=\"access-mode-button\"", "aria-haspopup=\"menu\"", "role=\"menuitemradio\"", "data-access-mode=\"internal\"", "data-access-mode=\"internal_domain\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -465,7 +465,7 @@ func TestSetupInitializesAuth(t *testing.T) {
 	}
 }
 
-func TestLoginIncludesAccessModeSelect(t *testing.T) {
+func TestLoginIncludesAccessModeMenu(t *testing.T) {
 	srv, err := New(writeTempConfig(t, authTestConfig()))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -480,7 +480,8 @@ func TestLoginIncludesAccessModeSelect(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"id=\"access-mode-select\"",
+		"id=\"access-mode-button\"",
+		"role=\"menuitemradio\"",
 		"home-nav.access-mode",
 		"['external', 'internal', 'internal_domain']",
 		"id=\"login-password\"",
