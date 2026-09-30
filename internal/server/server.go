@@ -1440,6 +1440,14 @@ const indexTemplate = `<!doctype html>
     .shell { width: min(1240px, calc(100vw - 36px)); margin: 0 auto; padding: 24px 0 80px; }
     .top-tools { width: min(1240px, calc(100vw - 36px)); margin: 22px auto 0; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
     .top-tools form { margin: 0; }
+    .service-search { display: flex; align-items: center; flex: 1 1 260px; max-width: 420px; margin-right: auto; min-width: 0; height: 48px; border: 1px solid var(--control-border); border-radius: 12px; background: var(--control-bg); }
+    .service-search:focus-within { border-color: var(--accent); }
+    .service-search input { flex: 1; min-width: 0; width: 100%; border: 0; outline: 0; padding: 0 14px; background: transparent; color: var(--text); font-size: 14px; }
+    .service-search input::placeholder { color: var(--muted); }
+    .search-clear { width: 42px; height: 42px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+    .search-clear[hidden], .app-icon[hidden] { display: none; }
+    .search-summary { min-height: 20px; margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+    .search-summary:empty { display: none; }
     .tool-button { width: 48px; height: 48px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--control-bg); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: var(--control-shadow); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
 	    .tool-button:hover { background: var(--control-bg-hover); }
 	    .tool-button:disabled { cursor: default; opacity: .42; }
@@ -1453,7 +1461,9 @@ const indexTemplate = `<!doctype html>
 	    .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	    .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-2px) rotate(45deg); }
 	    .access-mode-trigger[aria-expanded="true"] .access-mode-chevron { transform: translateY(2px) rotate(225deg); }
-	    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid #4c4d56; border-radius: 12px; background: #1c211e; box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+	    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 250px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid #4c4d56; border-radius: 12px; background: #1c211e; box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+    .access-mode-count { margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 400; }
+    .access-mode-note { margin: 6px 8px 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 	    .access-mode-menu[hidden] { display: none; }
 	    .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: #f7f7f7; font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
 	    .access-mode-option:hover, .access-mode-option:focus-visible { background: #29342f; }
@@ -1490,10 +1500,21 @@ const indexTemplate = `<!doctype html>
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
     .icon-fallback { font-size: 17px; font-weight: 800; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .health-dot { position: absolute; right: 7px; bottom: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 0 2px rgba(10,10,12,.70), 0 2px 8px rgba(0,0,0,.28); }
-    .health-dot[data-status="healthy"] { background: var(--ok); }
-    .health-dot[data-status="unhealthy"] { background: var(--bad); }
-    .health-dot[data-status="disabled"] { background: var(--disabled); }
+    .icon-launcher { position: relative; width: 76px; height: 76px; }
+    .health-dot { position: absolute; right: -1px; bottom: -1px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+    .health-dot::after { content: ''; display: block; width: 10px; height: 10px; margin: auto; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 0 2px rgba(10,10,12,.70), 0 2px 8px rgba(0,0,0,.28); }
+    .health-dot[data-status="healthy"]::after { background: var(--ok); }
+    .health-dot[data-status="unhealthy"]::after { background: var(--bad); }
+    .health-dot[hidden] { display: none; }
+    .health-dot:focus-visible, .entry-route:focus-visible, .search-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .entry-route { max-width: 100%; min-height: 24px; padding: 3px 5px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; cursor: pointer; }
+    .entry-route.is-fallback { color: #e5c46b; border-color: rgba(229,196,107,.25); background: rgba(229,196,107,.06); }
+    .entry-route:hover { background: var(--control-bg-hover); }
+    .modal.status-modal { width: min(540px, 100%); }
+    .status-details { display: grid; grid-template-columns: auto 1fr; gap: 12px 16px; margin: 20px 0; font-size: 14px; line-height: 1.6; }
+    .status-details dt { color: var(--muted); }
+    .status-details dd { margin: 0; overflow-wrap: anywhere; }
+    .status-note { color: var(--muted); font-size: 13px; line-height: 1.6; }
     .app-name { width: 92px; min-height: 38px; text-align: center; color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; text-shadow: 0 2px 10px rgba(0,0,0,.50); }
     .empty { display: none; color: var(--muted); padding: 22px 0; }
     body.is-empty .empty { display: block; }
@@ -1606,6 +1627,8 @@ const indexTemplate = `<!doctype html>
       .shell { width: min(100vw - 24px, 1240px); padding-top: 24px; }
       .top-tools { width: calc(100vw - 24px); margin-top: 12px; gap: 6px; }
       .top-tools .tool-button { width: 42px; height: 42px; }
+      .service-search { flex-basis: 100%; max-width: none; height: 44px; }
+      .service-search input { font-size: 16px; }
       .access-mode-trigger { width: 132px; height: 42px; padding-left: 11px; font-size: 13px; }
       .access-mode-option { min-height: 44px; }
       .access-mode-control.is-open { flex-basis: 100%; display: grid; justify-items: end; }
@@ -1614,6 +1637,7 @@ const indexTemplate = `<!doctype html>
       .group-actions { padding-top: 2px; }
       .icon-grid { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 22px 14px; }
       .icon-button { width: 66px; height: 66px; border-radius: 13px; }
+      .icon-launcher { width: 66px; height: 66px; }
       .icon-button .inline-icon { font-size: 36px; }
       .app-name { width: 78px; font-size: 13px; }
       .drag-placeholder { min-height: 109px; }
@@ -1645,12 +1669,17 @@ const indexTemplate = `<!doctype html>
 </head>
 <body style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
 	  <div class="top-tools">
+      <div class="service-search" role="search">
+        <input id="service-search" type="search" placeholder="搜索名称或标签" aria-label="搜索入口名称或标签" autocomplete="off" aria-describedby="search-summary">
+        <button class="search-clear" id="clear-search" type="button" aria-label="清空搜索" hidden>×</button>
+      </div>
 	    <div class="access-mode-control" id="access-mode-control">
 	      <button class="access-mode-trigger" id="access-mode-button" type="button" aria-label="优先访问入口，当前外网优先" aria-haspopup="menu" aria-expanded="false" aria-controls="access-mode-menu"><span id="access-mode-label">外网优先</span><span class="access-mode-chevron" aria-hidden="true"></span></button>
 	      <div class="access-mode-menu" id="access-mode-menu" role="menu" aria-label="优先访问入口" hidden>
-	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1">外网优先</button>
-	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1">内网 IP 优先</button>
-	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1">内网域名优先</button>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1"><span data-mode-label>外网优先</span><span class="access-mode-count"></span></button>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1"><span data-mode-label>内网 IP 优先</span><span class="access-mode-count"></span></button>
+	        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1"><span data-mode-label>内网域名优先</span><span class="access-mode-count"></span></button>
+        <p class="access-mode-note">数量为已配置入口；缺少时使用其他地址。</p>
 	      </div>
 	    </div>
 	    <button class="tool-button sort-button" type="button" id="save-sort-button" title="保存排序" disabled>{{icon "mdi:content-save-outline"}}</button>
@@ -1660,6 +1689,7 @@ const indexTemplate = `<!doctype html>
     {{if .Auth.Enabled}}<form method="post" action="/logout"><button class="tool-button" type="submit" title="退出登录">{{icon "mdi:logout"}}</button></form>{{end}}
   </div>
   <main class="shell">
+    <p class="search-summary" id="search-summary" role="status" aria-live="polite"></p>
     <section class="groups">
       {{range .Groups}}
       <section class="group" data-group-id="{{.ID}}">
@@ -1674,19 +1704,34 @@ const indexTemplate = `<!doctype html>
         <div class="icon-grid">
           {{range .Services}}
           <div class="app-icon" data-service-id="{{.ID}}" data-group-id="{{.GroupID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-icon-text="{{.IconText}}" data-icon-value="{{.Icon}}" data-internal-url="{{.InternalURL}}" data-internal-domain-url="{{.InternalDomainURL}}" data-external-url="{{.ExternalURL}}" data-tags="{{range $i, $tag := .Tags}}{{if $i}},{{end}}{{.}}{{end}}" data-notes="{{.Notes}}" data-health-type="{{.Health.Type}}" data-health-url="{{.Health.URL}}" data-health-address="{{.Health.Address}}" data-health-expect-status="{{.Health.ExpectStatus}}" data-health-timeout="{{.Health.Timeout}}">
-            <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" aria-label="{{.Name}}">
-              {{serviceIcon .}}
-              <span class="health-dot" data-status="unknown"></span>
-            </a>
+            <div class="icon-launcher">
+              <a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" aria-label="{{.Name}}">{{serviceIcon .}}</a>
+              <button class="health-dot" type="button" data-status="unknown" aria-label="{{.Name}}，查看后台探测状态" {{if eq .Health.Type "disabled"}}hidden{{end}}></button>
+            </div>
             <div class="app-name">{{.Name}}</div>
+            <button class="entry-route" type="button" aria-label="{{.Name}}，入口与状态详情"></button>
           </div>
           {{end}}
         </div>
       </section>
       {{end}}
     </section>
-    <p class="empty">暂无服务入口。</p>
+    <p class="empty" id="empty-message">暂无服务入口。</p>
   </main>
+
+  <div class="modal-backdrop" id="status-backdrop">
+    <section class="modal status-modal" role="dialog" aria-modal="true" aria-labelledby="status-title">
+      <div class="modal-head"><h2 id="status-title">入口与状态</h2><button class="close-button" id="status-close" type="button" aria-label="关闭入口与状态">×</button></div>
+      <dl class="status-details">
+        <dt>当前入口</dt><dd id="status-entry"></dd>
+        <dt>访问地址</dt><dd id="status-entry-url"></dd>
+        <dt>后台探测</dt><dd id="status-result"></dd>
+        <dt>探测目标</dt><dd id="status-target"></dd>
+        <dt>最近检查</dt><dd id="status-time"></dd>
+      </dl>
+      <p class="status-note">状态点来自导航服务器的定时探测，探测地址可能与当前入口不同。正常表示该探测成功，实际页面访问和登录仍取决于你的网络与账号。</p>
+    </section>
+  </div>
 
   <div class="menu" id="item-menu" role="menu" aria-hidden="true">
     <div class="menu-section"><p class="menu-title">打开外网入口</p><div class="menu-actions"><button class="menu-icon" type="button" data-action="open-external">{{icon "mdi:open-in-new"}}</button><button class="menu-icon" type="button" data-action="copy-external">{{icon "mdi:link-variant"}}</button></div></div>
@@ -1795,12 +1840,21 @@ const indexTemplate = `<!doctype html>
       <div class="confirm-actions"><button class="confirm-cancel" type="button" id="cancel-delete-button">取消</button><button class="confirm-delete" type="button" id="confirm-delete-button">删除</button></div>
     </section>
   </div>
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
     const items = [...document.querySelectorAll('.app-icon')];
     const groups = [...document.querySelectorAll('.group')];
     const menu = document.querySelector('#item-menu');
+    const searchInput = document.querySelector('#service-search');
+    const clearSearchButton = document.querySelector('#clear-search');
+    const searchSummary = document.querySelector('#search-summary');
+    const statusBackdrop = document.querySelector('#status-backdrop');
+    const statusCloseButton = document.querySelector('#status-close');
+    let statusItem = null;
+    let statusReturnFocus = null;
+    let cachedStatuses = {};
+    let statusUnavailable = false;
 	    const backdrop = document.querySelector('#edit-backdrop');
 	    const settingsBackdrop = document.querySelector('#settings-backdrop');
 	    const galleryBackdrop = document.querySelector('#gallery-backdrop');
@@ -1838,10 +1892,11 @@ const indexTemplate = `<!doctype html>
 	    const accessModeLabel = document.querySelector('#access-mode-label');
 	    const accessModeMenu = document.querySelector('#access-mode-menu');
 	    const accessModeOptions = [...accessModeMenu.querySelectorAll('[data-access-mode]')];
-    const statusLabels = { healthy: '正常', unhealthy: '异常', unknown: '未知', disabled: '未启用' };
+    const statusLabels = { healthy: '探测正常', unhealthy: '探测异常', unknown: '等待探测', disabled: '未监测' };
     const accessModeKey = 'home-nav.access-mode';
     const accessModes = ['external', 'internal', 'internal_domain'];
     const accessModeNames = { external: '外网入口', internal: '内网 IP 入口', internal_domain: '内网域名入口' };
+    const entryLabels = { external: '外网', internal: '内网 IP', internal_domain: '内网域名' };
     let activeItem = null;
     let editMode = false;
     let accessMode = 'external';
@@ -1877,6 +1932,15 @@ const indexTemplate = `<!doctype html>
       const type = order.find(candidate => urls[candidate]) || '';
       return { url: type ? urls[type] : '', type };
     }
+    function entryHint(entry, mode) {
+      return entry.type && entry.type !== mode ? '未配置' + accessModeNames[mode] + '，使用' + accessModeNames[entry.type] : accessModeNames[entry.type] || '没有可用入口';
+    }
+    function updateAccessCounts() {
+      for (const option of accessModeOptions) {
+        const count = items.filter(item => preferredEntry(item, option.dataset.accessMode).type === option.dataset.accessMode).length;
+        option.querySelector('.access-mode-count').textContent = '已配置 ' + count + '/' + items.length;
+      }
+    }
     function preferredURL(item, mode) { return preferredEntry(item, mode).url; }
     function savedAccessMode() {
       try {
@@ -1890,7 +1954,7 @@ const indexTemplate = `<!doctype html>
       accessMode = accessModes.includes(mode) ? mode : 'external';
       document.body.dataset.accessMode = accessMode;
       const selectedOption = accessModeOptions.find(option => option.dataset.accessMode === accessMode);
-      const label = selectedOption.textContent.trim();
+      const label = selectedOption.querySelector('[data-mode-label]').textContent.trim();
       accessModeLabel.textContent = label;
       accessModeButton.setAttribute('aria-label', '优先访问入口，当前' + label);
       for (const option of accessModeOptions) option.setAttribute('aria-checked', String(option === selectedOption));
@@ -1899,10 +1963,17 @@ const indexTemplate = `<!doctype html>
         const entry = preferredEntry(item, accessMode);
         link.href = openHref(entry.url);
         link.dataset.activeUrlType = entry.type;
-        const routeHint = entry.type && entry.type !== accessMode ? '未配置' + accessModeNames[accessMode] + '，使用' + accessModeNames[entry.type] : accessModeNames[entry.type] || '没有可用入口';
+        const routeHint = entryHint(entry, accessMode);
         link.title = routeHint;
         link.setAttribute('aria-label', item.dataset.name + '，' + routeHint);
+        const badge = item.querySelector('.entry-route');
+        const fallback = entry.type && entry.type !== accessMode;
+        badge.textContent = (fallback ? '回退·' : '') + (entryLabels[entry.type] || '无入口');
+        badge.classList.toggle('is-fallback', Boolean(fallback));
+        badge.title = routeHint + '；查看入口与状态详情';
+        badge.setAttribute('aria-label', item.dataset.name + '，' + routeHint + '，查看详情');
       }
+      if (statusItem) renderStatusDetails();
       try { localStorage.setItem(accessModeKey, accessMode); } catch (_) {}
       if (notify) showToast(accessModeNames[accessMode] + '优先，缺失时回退');
     }
@@ -1977,13 +2048,53 @@ const indexTemplate = `<!doctype html>
       let visibleTotal = 0;
 	      for (const group of groups) {
 	        const totalCount = group.querySelectorAll('.app-icon').length;
-	        const visibleCount = totalCount;
+	        const visibleCount = [...group.querySelectorAll('.app-icon')].filter(item => !item.hidden).length;
 	        group.classList.toggle('is-hidden', visibleCount === 0);
 	        group.querySelector('.group-visible-count').textContent = String(visibleCount);
 	        group.querySelector('.group-total-count').textContent = String(totalCount);
 	        visibleTotal += visibleCount;
 	      }
       document.body.classList.toggle('is-empty', visibleTotal === 0);
+      const searching = Boolean(searchInput.value.trim());
+      searchSummary.textContent = searching ? '找到 ' + visibleTotal + ' 个入口，共 ' + items.length + ' 个' : '';
+      document.querySelector('#empty-message').textContent = searching ? '没有匹配的入口，请换个名称或标签。' : '暂无服务入口。';
+    }
+    function filterServices() {
+      const terms = searchInput.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+      for (const item of items) {
+        const content = (item.dataset.name + ' ' + item.dataset.tags).toLocaleLowerCase();
+        item.hidden = !terms.every(term => content.includes(term));
+      }
+      clearSearchButton.hidden = searchInput.value.length === 0;
+      closeMenu();
+      updateGroupCounts();
+    }
+    function renderStatusDetails() {
+      if (!statusItem) return;
+      const entry = preferredEntry(statusItem, accessMode);
+      const healthType = statusItem.dataset.healthType;
+      const status = cachedStatuses[statusItem.dataset.serviceId];
+      const result = healthType === 'disabled' ? 'disabled' : status?.status || 'unknown';
+      document.querySelector('#status-title').textContent = statusItem.dataset.name;
+      document.querySelector('#status-entry').textContent = entryHint(entry, accessMode);
+      document.querySelector('#status-entry-url').textContent = entry.url || '未配置';
+      document.querySelector('#status-result').textContent = statusUnavailable && healthType !== 'disabled' ? '状态暂时无法更新，下面是最近记录' : (statusLabels[result] || '等待探测');
+      document.querySelector('#status-target').textContent = healthType === 'disabled' ? '未设置探测' : (healthType === 'tcp' ? '端口连接：' + statusItem.dataset.healthAddress : '网页响应：' + statusItem.dataset.healthUrl);
+      const checkedAt = status?.checked_at ? new Date(status.checked_at) : null;
+      document.querySelector('#status-time').textContent = checkedAt && !Number.isNaN(checkedAt.getTime()) ? checkedAt.toLocaleString() + (result === 'unknown' ? '' : '，' + (statusLabels[result] || '')) : '暂无检查记录';
+    }
+    function openStatusDetails(item, trigger) {
+      closeMenu();
+      statusItem = item;
+      statusReturnFocus = trigger;
+      renderStatusDetails();
+      statusBackdrop.classList.add('is-open');
+      statusCloseButton.focus();
+    }
+    function closeStatusDetails() {
+      statusBackdrop.classList.remove('is-open');
+      statusItem = null;
+      statusReturnFocus?.focus();
     }
     function openMenuAt(item, left, top) {
       activeItem = item;
@@ -2000,6 +2111,9 @@ const indexTemplate = `<!doctype html>
     }
     function closeMenu() { menu.classList.remove('is-open'); menu.setAttribute('aria-hidden', 'true'); }
 	    function setEditMode(value) {
+          if (value) { searchInput.value = ''; filterServices(); }
+          searchInput.disabled = value;
+          searchInput.placeholder = value ? '关闭编辑模式后可搜索' : '搜索名称或标签';
 	      editMode = value;
 	      document.body.classList.toggle('is-edit-mode', editMode);
 	      for (const button of document.querySelectorAll('.edit-mode-button')) button.classList.toggle('is-active', editMode);
@@ -2406,16 +2520,28 @@ const indexTemplate = `<!doctype html>
     async function refreshStatus() {
       try {
         const response = await fetch('/api/status', { cache: 'no-store' });
-        if (!response.ok) return;
+        if (!response.ok) throw new Error('status unavailable');
         const payload = await response.json();
+        cachedStatuses = payload.services || {};
+        statusUnavailable = false;
         for (const item of items) {
-          const status = payload.services?.[item.dataset.serviceId];
-          if (!status) continue;
+          const status = cachedStatuses[item.dataset.serviceId];
           const dot = item.querySelector('.health-dot');
-          dot.dataset.status = status.status || 'unknown';
-          dot.title = status.error || (statusLabels[status.status] || '未知');
+          const currentStatus = item.dataset.healthType === 'disabled' ? 'disabled' : status?.status || 'unknown';
+          dot.hidden = currentStatus === 'disabled';
+          dot.dataset.status = currentStatus;
+          dot.title = (statusLabels[currentStatus] || '等待探测') + '；查看探测目标与时间';
+          dot.setAttribute('aria-label', item.dataset.name + '，后台' + (statusLabels[currentStatus] || '等待探测') + '，查看详情');
         }
-      } catch (_) {}
+      } catch (_) {
+        statusUnavailable = true;
+        for (const dot of document.querySelectorAll('.health-dot:not([hidden])')) {
+          dot.dataset.status = 'unknown';
+          dot.title = '状态暂时无法更新；查看最近记录';
+          dot.setAttribute('aria-label', dot.closest('.app-icon').dataset.name + '，状态暂时无法更新，查看最近记录');
+        }
+      }
+      if (statusItem) renderStatusDetails();
     }
     async function saveItem(event) {
       event.preventDefault();
@@ -2844,6 +2970,7 @@ const indexTemplate = `<!doctype html>
 
 	    for (const item of items) {
 	      const button = item.querySelector('.icon-button');
+          for (const trigger of item.querySelectorAll('.entry-route, .health-dot')) trigger.addEventListener('click', () => openStatusDetails(item, trigger));
 	      let longPressTimer = null;
 	      let suppressClick = false;
 	      button.addEventListener('dragstart', event => event.preventDefault());
@@ -2924,6 +3051,22 @@ const indexTemplate = `<!doctype html>
     });
 	    document.addEventListener('click', event => { if (!menu.contains(event.target) && !event.target.closest('.icon-button')) closeMenu(); });
 	    bindAccessModeMenu();
+    updateAccessCounts();
+    searchInput.addEventListener('input', filterServices);
+    clearSearchButton.addEventListener('click', () => { searchInput.value = ''; filterServices(); searchInput.focus(); });
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); searchInput.value = ''; filterServices(); }
+    });
+    statusCloseButton.addEventListener('click', closeStatusDetails);
+    statusBackdrop.addEventListener('click', event => { if (event.target === statusBackdrop) closeStatusDetails(); });
+    statusBackdrop.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeStatusDetails(); }
+      if (event.key === 'Tab') { event.preventDefault(); statusCloseButton.focus(); }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey || editMode || document.querySelector('.modal-backdrop.is-open') || event.target.closest('input, textarea, select, [contenteditable]')) return;
+      event.preventDefault(); searchInput.focus();
+    });
 	    saveSortButton.addEventListener('click', () => saveSort());
     document.querySelector('#open-groups-button').addEventListener('click', openGroups);
     document.querySelector('#groups-close').addEventListener('click', closeGroups);
