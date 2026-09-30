@@ -1,0 +1,24 @@
+{
+  "source": {
+    "ssh_target": "root@certificate-source.example.test",
+    "identity_file": "/root/.ssh/id_ed25519_lan_cert_sync",
+    "known_hosts_file": "/root/.ssh/known_hosts_lan_cert_sync"
+  },
+  "state_dir": "/var/lib/home-nav-lan-cert-sync",
+  "minimum_valid_days": 14,
+  "targets": [
+    {
+      "name": "lan-gateway",
+      "cert_file": "/path/to/lan-gateway/fullchain.pem",
+      "key_file": "/path/to/lan-gateway/privkey.pem",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0600",
+      "check_command": ["docker", "exec", "lan-gateway", "nginx", "-t"],
+      "reload_command": ["docker", "exec", "lan-gateway", "nginx", "-s", "reload"]
+    }
+  ],
+  "probes": [
+    {"hostname": "app-lan.example.test", "address": "127.0.0.1", "port": 443}
+  ]
+}

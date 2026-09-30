@@ -95,6 +95,8 @@ docker compose -f deploy/docker-compose.yml up -d
 
 真实生产部署建议：
 
+发布和可选的内网 HTTPS 证书同步说明见 [部署说明](deploy/README.md)。
+
 ```yaml
 services:
   home-nav:
