@@ -271,7 +271,7 @@ body[data-density="compact"] .icon-button .inline-icon { font-size: 32px; }
   .icon-launcher, .icon-button { width: 54px; height: 54px; }
   .icon-button img { width: 38px; height: 38px; }
   .app-name { font-size: 13px; }
-  .entry-route { min-height: 44px; padding: 3px; font-size: 12px; }
+  .entry-route { min-width: 44px; min-height: 44px; padding: 3px 0; font-size: 12px; }
   .health-dot { width: 44px; height: 44px; }
   .item-menu { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); top: auto; width: auto; }
   .modal { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 14px; }
