@@ -1,0 +1,434 @@
+{
+  "format_version": 1,
+  "purpose": "Local official brand assets for identifying service links; trademarks belong to their owners.",
+  "icons": [
+    {
+      "name": "dockge",
+      "file": "dockge.png",
+      "source_url": "https://raw.githubusercontent.com/louislam/dockge/HEAD/frontend/public/icon-512x512.png",
+      "source_page": "https://github.com/louislam/dockge",
+      "sha256": "18b7ca39c4b8e3fe411b40975e67ecde64c94c0d1b918388e99d04cdf8ed59e0",
+      "size": 28382,
+      "service_name_pattern": "(?:.+-)?dockge",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "vaultwarden",
+      "file": "vaultwarden.svg",
+      "source_url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/HEAD/resources/vaultwarden-icon-white.svg",
+      "source_page": "https://github.com/dani-garcia/vaultwarden",
+      "git_blob_sha": "bb241d516206c45bfaffe5f023caaeb7d6dcc2a4",
+      "sha256": "847de8d11ea21e4cda7264b01aa2f4b9f64e2bcdd25f9a4c38ecbc05a1e97a48",
+      "size": 5637,
+      "service_name_pattern": "vaultwarden(?:-(?:admin|config))?"
+    },
+    {
+      "name": "jaeger",
+      "file": "jaeger.svg",
+      "source_url": "https://raw.githubusercontent.com/jaegertracing/jaeger-ui/HEAD/packages/jaeger-ui/src/img/jaeger-logo.svg",
+      "source_page": "https://github.com/jaegertracing/jaeger-ui",
+      "git_blob_sha": "9bab082458dcbe1f76f25f1acda49983c5114831",
+      "sha256": "ab11f618eb3beb6f2cc09bf140073c6314885131f09d7670ca83cfcdf645fb37",
+      "size": 161920,
+      "service_name_pattern": "jaeger"
+    },
+    {
+      "name": "librespeed",
+      "file": "librespeed.svg",
+      "source_url": "https://raw.githubusercontent.com/librespeed/speedtest/HEAD/frontend/images/favicon.svg",
+      "source_page": "https://github.com/librespeed/speedtest",
+      "git_blob_sha": "a38e24d64123685c6fc93d1e31bb94c48f680cb5",
+      "sha256": "1e0123507e304f6a21a82a3ed0b40413d6760078bbcdbe54d137aee9bedeb523",
+      "size": 1083,
+      "service_name_pattern": "librespeed"
+    },
+    {
+      "name": "qbittorrent",
+      "file": "qbittorrent.svg",
+      "source_url": "https://raw.githubusercontent.com/qbittorrent/qBittorrent/HEAD/dist/unix/menuicons/scalable/apps/qbittorrent.svg",
+      "source_page": "https://github.com/qbittorrent/qBittorrent",
+      "git_blob_sha": "7bbcf9ba0530e781df697b5adb3372fafd039cde",
+      "sha256": "1930d0ce62e017f677d39150ee5b8746600938c5be27d75a326d631cc87a535b",
+      "size": 1487,
+      "service_name_pattern": "qbittorrent"
+    },
+    {
+      "name": "dbgate",
+      "file": "dbgate.png",
+      "source_url": "https://raw.githubusercontent.com/dbgate/dbgate/HEAD/packages/web/public/logo512.png",
+      "source_page": "https://github.com/dbgate/dbgate",
+      "git_blob_sha": "58cf135f383b0b8002dfa772d2966622283a72f9",
+      "sha256": "49d42cd69cb8579bed9ff4ac8a9b790f60dac1544cde5cef7399fb229b0bb41c",
+      "size": 146531,
+      "service_name_pattern": "dbgate",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "beszel",
+      "file": "beszel.svg",
+      "source_url": "https://raw.githubusercontent.com/henrygd/beszel/HEAD/internal/site/public/static/icon.svg",
+      "source_page": "https://github.com/henrygd/beszel",
+      "git_blob_sha": "5cd73a8ec6d6a3041e3148705c7ad53376be0830",
+      "sha256": "a090f702f29ac4dd84567af1c119cc6833f8ad960594493f7565f6458906b4d3",
+      "size": 1138,
+      "service_name_pattern": "beszel(?: .+)?"
+    },
+    {
+      "name": "telegram",
+      "file": "telegram.svg",
+      "source_url": "https://telegram.org/img/t_logo.svg",
+      "source_page": "https://telegram.org/",
+      "sha256": "85059d5e5bf7bda91ebab30664993c49867a26be6b947834aca16c846581766a",
+      "size": 1694,
+      "service_name_pattern": "telegram"
+    },
+    {
+      "name": "seaweedfs",
+      "file": "seaweedfs.svg",
+      "source_url": "https://raw.githubusercontent.com/seaweedfs/seaweedfs/HEAD/note/icon.svg",
+      "source_page": "https://github.com/seaweedfs/seaweedfs",
+      "git_blob_sha": "e762647c8314a6db86d1c46fe522656cad5a380e",
+      "sha256": "cbcb43994bb19f04e458a3ff9a95615caa7854d7cf45fe1170c8472e0e36f131",
+      "size": 3590,
+      "service_name_pattern": "seaweedfs"
+    },
+    {
+      "name": "xunlei",
+      "file": "xunlei.png",
+      "source_url": "https://pan.xunlei.com/icon.png",
+      "source_page": "https://pan.xunlei.com/",
+      "sha256": "c9b9ecb16c93a660f88af6da0b1d36bcbbe99780a467e3a88460fd87fb6c2698",
+      "size": 2663,
+      "service_name_pattern": "迅雷",
+      "dimensions": [
+        90,
+        90
+      ]
+    },
+    {
+      "name": "mediago",
+      "file": "mediago.png",
+      "source_url": "https://raw.githubusercontent.com/caorushizi/mediago/HEAD/apps/ui/public/icon-512.png",
+      "source_page": "https://github.com/caorushizi/mediago",
+      "git_blob_sha": "185d6a0141a65b6772d2640ef61f9d60489c3ffc",
+      "sha256": "9a55510b0637e81e7c8a00e4718f283c19b1f5909a27109f34ff7d534cfe5dd2",
+      "size": 17487,
+      "service_name_pattern": "mediago",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "cc-switch",
+      "file": "cc-switch.png",
+      "source_url": "https://raw.githubusercontent.com/farion1231/cc-switch/HEAD/src-tauri/icons/128x128@2x.png",
+      "source_page": "https://github.com/farion1231/cc-switch",
+      "git_blob_sha": "5f4cade4d75bcc9935e1d56381a540ef2f60fed7",
+      "sha256": "efbe73b4642d35ed7987cebb223e4f2b1d03408226c48d9edc37dbb5b1c69be4",
+      "size": 44631,
+      "service_name_pattern": "cc switch",
+      "dimensions": [
+        256,
+        256
+      ]
+    },
+    {
+      "name": "rustdesk",
+      "file": "rustdesk.svg",
+      "source_url": "https://raw.githubusercontent.com/rustdesk/rustdesk/master/res/logo.svg",
+      "source_page": "https://github.com/rustdesk/rustdesk",
+      "sha256": "9d090a828bd2c8dba6f94252b4f96feea495ebc0681e366a99edc3c119b69a9b",
+      "size": 1352,
+      "service_name_pattern": "rustdesk"
+    },
+    {
+      "name": "yacd",
+      "file": "yacd.png",
+      "source_url": "https://raw.githubusercontent.com/haishanh/yacd/HEAD/assets/apple-touch-icon-precomposed.png",
+      "source_page": "https://github.com/haishanh/yacd",
+      "git_blob_sha": "e83c40f5fc12f51c02fe0a3f3080a608319b0775",
+      "sha256": "71acf57c4c5f0dcc120fd8774675e0f56701242556514dec1a20749ae802f352",
+      "size": 3766,
+      "service_name_pattern": "yacd",
+      "dimensions": [
+        158,
+        158
+      ]
+    },
+    {
+      "name": "zashboard",
+      "file": "zashboard.svg",
+      "source_url": "https://raw.githubusercontent.com/Zephyruso/zashboard/HEAD/public/icon.svg",
+      "source_page": "https://github.com/Zephyruso/zashboard",
+      "git_blob_sha": "822c7c244ca05200ec6ce42a78b25f9058cab7f2",
+      "sha256": "adb6b975afae2e736a4bd2faa68ea84928725b103a564cbdfdb7219aef00a332",
+      "size": 395,
+      "service_name_pattern": "zashboard"
+    },
+    {
+      "name": "metacubexd",
+      "file": "metacubexd.png",
+      "source_url": "https://raw.githubusercontent.com/MetaCubeX/metacubexd/HEAD/packages/ui/public/maskable-icon-512x512.png",
+      "source_page": "https://github.com/MetaCubeX/metacubexd",
+      "sha256": "a39792d445dd419b1834e577577f19a2098a712b79e2a99fb8d00b2ede8f25ae",
+      "size": 3523,
+      "service_name_pattern": "metacubexd",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "yacd-meta",
+      "file": "yacd-meta.png",
+      "source_url": "https://raw.githubusercontent.com/MetaCubeX/Yacd-meta/HEAD/assets/apple-touch-icon-precomposed.png",
+      "source_page": "https://github.com/MetaCubeX/Yacd-meta",
+      "git_blob_sha": "cbb3fcbf293ab72a7776270f285c82be6c993caf",
+      "sha256": "3ddc065bf9fdb9715afd8b9ceaa13fa63d90206ca751cf7bce790c5f493bf4e1",
+      "size": 48291,
+      "service_name_pattern": "yacd-meta",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "cloudflare",
+      "file": "cloudflare.svg",
+      "source_url": "https://www.cloudflare.com/logo.svg",
+      "source_page": "https://www.cloudflare.com/",
+      "sha256": "c9ec1d5d5e4b0924666756a70179395c26b010372f8d7eec3539575281cebf1b",
+      "size": 1396,
+      "service_name_pattern": "cloudflare"
+    },
+    {
+      "name": "openai",
+      "file": "openai.svg",
+      "source_url": "https://cdn.oaistatic.com/assets/favicon-l4nq08hd.svg",
+      "source_page": "https://chatgpt.com/",
+      "sha256": "8f2de046d22cfecfe3917cf87ff1ce49a48d79956f6b18be3b37db29148a0aeb",
+      "size": 4258,
+      "service_name_pattern": "chatgpt|codex-(?:doc|settings)"
+    },
+    {
+      "name": "gmail",
+      "file": "gmail.png",
+      "source_url": "https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
+      "source_page": "https://mail.google.com/",
+      "sha256": "a5cf5c35082aa506518402699c5c5bbc2416742904c60a8cdd81731a2b080bad",
+      "size": 1227,
+      "service_name_pattern": "gmail",
+      "dimensions": [
+        96,
+        96
+      ]
+    },
+    {
+      "name": "netease",
+      "file": "netease.png",
+      "source_url": "https://mail.163.com/favicon.ico",
+      "source_page": "https://mail.163.com/",
+      "sha256": "aaa1bc04a6989c7bd8163fd163cfbdf986d9c04758b841d97d3081314a2fc50c",
+      "size": 1766,
+      "service_name_pattern": "163mail",
+      "dimensions": [
+        48,
+        48
+      ]
+    },
+    {
+      "name": "youtube",
+      "file": "youtube.png",
+      "source_url": "https://www.youtube.com/s/desktop/2b888666/img/favicon_144x144.png",
+      "source_page": "https://www.youtube.com/",
+      "sha256": "e39dc3d8c2f82ad2375132a8efcf521c232d5e2cf08abeb9bebe1ad94afb2157",
+      "size": 5020,
+      "service_name_pattern": "youtube",
+      "dimensions": [
+        144,
+        144
+      ]
+    },
+    {
+      "name": "github",
+      "file": "github.svg",
+      "source_url": "https://github.githubassets.com/favicons/favicon-dark.svg",
+      "source_page": "https://github.com/",
+      "sha256": "aaefddf5fb6fb27b69945bb1c3d4452fc06923d6f68396fac5f786c3a12487ac",
+      "size": 957,
+      "service_name_pattern": "github(?:-.+)?|gist"
+    },
+    {
+      "name": "tailscale",
+      "file": "tailscale.svg",
+      "source_url": "https://tailscale.com/favicon.svg",
+      "source_page": "https://tailscale.com/",
+      "sha256": "a5bad3bf6a94e50a9f7969283721f75a80da92a4086ded04e709830a2086c001",
+      "size": 1820,
+      "service_name_pattern": "tailscale-admin"
+    },
+    {
+      "name": "deepseek",
+      "file": "deepseek.ico",
+      "source_url": "https://www.deepseek.com/favicon.ico",
+      "source_page": "https://www.deepseek.com/",
+      "sha256": "30a4420e6e4dcb17fd7de560c5004346c2bc8cd971d2d5f5ee15326603e51321",
+      "size": 209762,
+      "service_name_pattern": "deepseek"
+    },
+    {
+      "name": "mermaid",
+      "file": "mermaid.png",
+      "source_url": "https://www.mermaidchart.com/favicon.ico",
+      "source_page": "https://www.mermaidchart.com/",
+      "sha256": "8ff9925e62b201fbc91344ed464345efa039bb3b0191fc2b5c76960ebf91cc8b",
+      "size": 1188,
+      "service_name_pattern": "mermaid-chart",
+      "dimensions": [
+        48,
+        48
+      ]
+    },
+    {
+      "name": "v2ex",
+      "file": "v2ex.png",
+      "source_url": "https://www.v2ex.com/static/icon-192.png",
+      "source_page": "https://www.v2ex.com/",
+      "sha256": "f160bf4ecae6db26ecfd84f2ff5f6c66a47402e62099ac15c78d7e46571807af",
+      "size": 13257,
+      "service_name_pattern": "v2ex",
+      "dimensions": [
+        192,
+        192
+      ]
+    },
+    {
+      "name": "qqmail",
+      "file": "qqmail.png",
+      "source_url": "https://res.wx.qq.com/t/webmail/webmail/res/images/qqmail_favicon_96h.8d124a7.png",
+      "source_page": "https://mail.qq.com/",
+      "sha256": "ea5718ce82f326c827ac6de52bc2e759864650956062faa61fcaf61694d0ab6e",
+      "size": 2910,
+      "service_name_pattern": "qqmail",
+      "dimensions": [
+        96,
+        96
+      ]
+    },
+    {
+      "name": "google",
+      "file": "google.svg",
+      "source_url": "https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg",
+      "source_page": "https://myaccount.google.com/",
+      "sha256": "ed9087d76cdc6d1c53698f6068f79872e77e87c8d012c0cfdad13b05b6ccb37c",
+      "size": 742,
+      "service_name_pattern": "gmail-apppasswords"
+    },
+    {
+      "name": "asus",
+      "file": "asus.png",
+      "source_url": "https://www.asus.com/images/favicon.ico",
+      "source_page": "https://www.asus.com/",
+      "sha256": "5b6a6fe201f8f83109ebf040dd5182a2000f01b0fed65316ac63da58e5d5d7fe",
+      "size": 5458,
+      "service_name_pattern": "rt-ax57",
+      "dimensions": [
+        256,
+        256
+      ]
+    },
+    {
+      "name": "dell",
+      "file": "dell.png",
+      "source_url": "https://i.dell.com/is/image/DellContent/content/dam/images/logos/dell-technologies/stacked/digital/delltech-logo-stk-blue-rgb.png?wid=512&hei=512&fit=fit",
+      "source_page": "https://www.dell.com/",
+      "sha256": "dd9ed634491f2d3dbe7b982a8c794bd2f60894db64d486cfda86c67a9c0f91a9",
+      "size": 22620,
+      "service_name_pattern": ".+ idrac",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "name": "vmware",
+      "file": "vmware.png",
+      "source_url": "https://www.vmware.com/vm-favicon-96x96.png",
+      "source_page": "https://www.vmware.com/",
+      "sha256": "8b3f16d19e2a1205615b09f2ba22249408bff9fb4931f91a5a6fb89c968b1e42",
+      "size": 3199,
+      "service_name_pattern": ".+ esxi",
+      "dimensions": [
+        96,
+        96
+      ]
+    },
+    {
+      "name": "drawio",
+      "file": "drawio.svg",
+      "service_name_pattern": "draw\\.io",
+      "source_url": "https://raw.githubusercontent.com/jgraph/drawio/dev/src/main/webapp/images/drawlogo.svg",
+      "source_page": "https://github.com/jgraph/drawio",
+      "sha256": "61728f9060e9e971f75555d89cdca1baed5d5ff7dba9ca8ee314a08c67dd57ec",
+      "size": 1313
+    },
+    {
+      "name": "gitlab",
+      "file": "gitlab.png",
+      "service_name_pattern": "gitlab",
+      "source_url": "GitLab distribution: assets/apple-touch-icon.png",
+      "source_page": "https://about.gitlab.com/",
+      "sha256": "b049d4bc0dd9626f31db825d61880737befc7835982586d015bded10b4435460",
+      "size": 7455,
+      "dimensions": [
+        180,
+        180
+      ],
+      "source_note": "Unmodified icon bundled with the installed official GitLab distribution."
+    },
+    {
+      "name": "apkcombo",
+      "file": "apkcombo.png",
+      "service_name_pattern": "apk-combo",
+      "source_url": "https://www.google.com/s2/favicons?domain=apkcombo.com&sz=128",
+      "source_page": "https://apkcombo.com/",
+      "sha256": "3a9c38cc39805a40b07e4dff2aa22083d71aad95d5c8cd9ba2e088988a86a120",
+      "size": 664,
+      "dimensions": [
+        128,
+        128
+      ],
+      "source_note": "Original public site favicon delivered through Google favicon cache; the site rejected direct asset requests during collection."
+    },
+    {
+      "name": "godaddy",
+      "file": "godaddy.png",
+      "service_name_pattern": "godaddy-domain",
+      "source_url": "https://www.google.com/s2/favicons?domain=godaddy.com&sz=128",
+      "source_page": "https://www.godaddy.com/",
+      "sha256": "ea24570dd7740951432738e3db4477babeb01173f43f3f2d4e970aca1c3223bb",
+      "size": 1965,
+      "dimensions": [
+        128,
+        128
+      ],
+      "source_note": "Original public site favicon delivered through Google favicon cache; the site rejected direct asset requests during collection."
+    },
+    {
+      "name": "erp",
+      "file": "erp.svg",
+      "service_name_pattern": "(?!)",
+      "source_note": "Unmodified favicon published by the self-hosted ERP application. Private service ID assignments stay outside this repository.",
+      "source_path": "/favicon.svg",
+      "sha256": "0e0e6878ff92adab3c9b6c3956aa441c3d385a2ab80cab9effafe2088c60d5c4",
+      "size": 461
+    }
+  ]
+}

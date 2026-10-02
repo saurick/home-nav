@@ -54,10 +54,34 @@ cat /var/lib/home-nav-lan-cert-sync/last-result.json
 
 独立签发、使用不同密钥要求或需要硬件导入的证书应单独维护，不自动加入泛域名同步任务。
 
+## 本地品牌图标
+
+`official-icons/manifest.json` 记录固定图标文件、SHA-256、服务名匹配规则与来源。资源以项目仓库或官网发布版本为主；GitLab 使用发行版内置图标，部分官网拒绝直连时使用其公开 favicon 缓存，来源差异记录在各项 `source_note`。ERP 使用应用自己发布的 favicon。图标用于识别相应服务，商标与图形版权属于各自所有者；保留原配色和比例。
+
+复用现有 uploads 挂载，无需增加图标代理或构建应用镜像。安装脚本只修改匹配入口的 `icon` 标量；未知名称保持现状。自建入口名称无法识别产品时，使用不提交到仓库的 JSON `--service-map` 将入口 ID 映射到图标目录中的 `name`。资源文件名包含内容摘要，避免浏览器沿用旧缓存。Python 依赖见 [requirements.txt](requirements.txt)，可在独立虚拟环境安装。
+
+1. 从已提交版本取出 `deploy/install-official-icons.py` 与 `deploy/official-icons/`，确认真实配置、uploads 主机目录和当前配置摘要。先执行只读计划：
+
+   ```sh
+   python3 deploy/install-official-icons.py --config /path/to/services.yaml --uploads-dir /path/to/uploads
+   ```
+
+2. 核对计划后，带配置摘要与全新的私有备份目录执行。备份目录父目录应只允许维护者访问；输出仅包含图标差异与摘要，完整配置备份为 0600。脚本拒绝配置漂移、资产摘要不符、主动 SVG 内容、目录逃逸或同名内容冲突。
+
+   ```sh
+   python3 deploy/install-official-icons.py --config /path/to/services.yaml --uploads-dir /path/to/uploads \
+     --expect-config-sha256 <preflight-sha256> --backup-dir /private/path/new-icon-backup --apply
+   ```
+
+3. 使用当前正式 Compose 的 Home Nav 服务重启以重新读取 YAML。核对应用镜像、配置摘要、本地图标 HTTP 内容、认证导航、图库与实际浏览器。部署回执同时绑定图标发布 commit 和原应用镜像 commit，两者分别表示资源版本和应用版本。
+
+4. 恢复时先比较当前配置，只将 `icon-changes.json` 记录的图标字段恢复为旧值，保留其他后续改动；重启 Home Nav 并验证。原 uploads 文件与应用镜像始终保留，不用旧完整 YAML 覆盖新的入口或登录配置。内容相同的再次安装不写配置，也不需再次重启。
+
 ## 本地验证
 
 ```sh
 go test ./...
+python3 -m pip install -r deploy/requirements.txt
 python3 -B -m unittest discover -s deploy -p 'test_*.py'
 ```
 
