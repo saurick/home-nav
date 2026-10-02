@@ -81,6 +81,9 @@ func renderConfigYAML(cfg *Config) string {
 				}
 			}
 			line(&b, 4, "notes: %s", yamlString(service.Notes))
+			if service.Pinned {
+				line(&b, 4, "pinned: true")
+			}
 			line(&b, 4, "health:")
 			line(&b, 5, "type: %s", service.Health.Type)
 			if service.Health.URL != "" {

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const maxUploadImageBytes = 8 << 20
@@ -92,7 +93,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	name, err := randomUploadName(ext)
+	name, err := randomUploadName(header.Filename, ext)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "生成文件名失败")
 		return
@@ -239,12 +240,29 @@ func looksLikeSVG(body []byte) bool {
 	return strings.HasPrefix(text, "<svg") || strings.Contains(text, "<svg ")
 }
 
-func randomUploadName(ext string) (string, error) {
+func randomUploadName(filename, ext string) (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b[:]) + ext, nil
+	base := pathpkg.Base(strings.ReplaceAll(filename, `\`, "/"))
+	base = strings.TrimSuffix(base, pathpkg.Ext(base))
+	var label []rune
+	for _, r := range base {
+		if len(label) >= 40 {
+			break
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+			label = append(label, r)
+		} else if len(label) > 0 && label[len(label)-1] != '-' {
+			label = append(label, '-')
+		}
+	}
+	name := strings.Trim(string(label), "-_")
+	if name == "" {
+		name = "image"
+	}
+	return name + "-" + hex.EncodeToString(b[:]) + ext, nil
 }
 
 func listUploadAssets(cfg *Config) ([]AssetItem, error) {

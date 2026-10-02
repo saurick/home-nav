@@ -68,6 +68,7 @@ type Service struct {
 	ExternalURL       string      `yaml:"external_url"`
 	Tags              []string    `yaml:"tags"`
 	Notes             string      `yaml:"notes"`
+	Pinned            bool        `yaml:"pinned,omitempty"`
 	Health            HealthCheck `yaml:"health"`
 	GroupID           string      `yaml:"-"`
 	GroupName         string      `yaml:"-"`
@@ -372,8 +373,12 @@ func normalizeHealth(health *HealthCheck) error {
 
 	switch health.Type {
 	case "disabled":
+		health.URL = ""
+		health.Address = ""
+		health.ExpectStatus = 0
 		return nil
 	case "http":
+		health.Address = ""
 		if health.URL == "" {
 			return fmt.Errorf("health.url 不能为空")
 		}
@@ -388,6 +393,8 @@ func normalizeHealth(health *HealthCheck) error {
 		}
 		return nil
 	case "tcp":
+		health.URL = ""
+		health.ExpectStatus = 0
 		if health.Address == "" {
 			return fmt.Errorf("health.address 不能为空")
 		}

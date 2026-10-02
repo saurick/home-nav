@@ -99,29 +99,13 @@ func TestIndexIncludesAccessModeMenu(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-button\"", "aria-haspopup=\"menu\"", "role=\"menuitemradio\"", "data-access-mode=\"internal\"", "data-access-mode=\"internal_domain\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "home-nav.access-mode", "内网 IP 入口", "内网域名入口"} {
+	for _, want := range []string{"id=\"access-mode-button\"", "aria-haspopup=\"menu\"", "role=\"menuitemradio\"", "data-access-mode=\"internal\"", "data-access-mode=\"internal_domain\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "内网 IP 优先", "内网域名优先", `rel="noopener noreferrer"`, `id="copy-dialog"`, `id="manual-copy"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
 	}
 	if !strings.Contains(body, `href="https://dockge.example.com"`) {
 		t.Fatal("index should render service clicks as direct links")
-	}
-	for _, want := range []string{
-		`rel="noopener noreferrer"`,
-		"function openRedirectHref(url)",
-		"window.open(openRedirectHref(url), '_blank', 'noopener,noreferrer')",
-		"openEntryURL(preferredURL(item, accessMode))",
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("expected index to contain %q", want)
-		}
-	}
-	if !strings.Contains(body, "function copyTextFallback(value)") || !strings.Contains(body, "document.execCommand('copy')") || !strings.Contains(body, "window.isSecureContext") {
-		t.Fatal("index should provide an insecure-http copy fallback for server access")
-	}
-	if !strings.Contains(body, "function showManualCopy(value)") || !strings.Contains(body, "window.prompt('请手动复制链接', value)") {
-		t.Fatal("index should show the link when browser copy APIs are unavailable")
 	}
 }
 
@@ -187,7 +171,7 @@ func TestOpenRedirectRejectsInvalidURL(t *testing.T) {
 	}
 }
 
-func TestIndexDoesNotRenderClockOrSearch(t *testing.T) {
+func TestIndexIncludesServiceSearchWithoutClock(t *testing.T) {
 	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -201,6 +185,11 @@ func TestIndexDoesNotRenderClockOrSearch(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
+	for _, want := range []string{`id="service-search"`, `aria-label="搜索入口名称或标签"`, `id="search-summary"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected service search marker %q", want)
+		}
+	}
 	for _, unwanted := range []string{"id=\"search\"", "class=\"search-wrap\"", "clock-time", "clock-date", "搜索服务、描述或标签", "updateClock", "home-nav.search"} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("index should not contain clock or search UI marker %q", unwanted)
@@ -222,17 +211,12 @@ func TestIndexIncludesDragSortControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"save-sort-button\"", "id=\"delete-service-button\"", "id=\"delete-confirm-backdrop\"", "id=\"confirm-delete-button\"", "data-action=\"delete\"", "/api/services/sort", "method: 'DELETE'", "openDeleteConfirm", "performDelete", "startDragPointer", "startMouseDrag", "dragPlaceholderFor", "animateGridMove", "layoutSortRect", "sortRowsFor", "sortAnimations", "node.animate", "cubic-bezier(.16,1,.3,1)", "requestAnimationFrame", "sortPayload"} {
+	for _, want := range []string{`id="edit-mode-button"`, `id="save-sort-button"`, `id="discard-sort-button"`, `id="finish-edit-button"`, `id="delete-service-button"`, `id="delete-dialog"`, `id="confirm-delete-button"`, `data-action="drag"`, `id="discard-dialog"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
 	}
-	if !strings.Contains(body, ".drag-placeholder { width: 100%; min-height: 122px; visibility: hidden; pointer-events: none; }") {
-		t.Fatal("drag placeholder should reserve layout space without drawing a visible drop box")
-	}
-	if strings.Contains(body, "window.confirm") {
-		t.Fatal("index should use the in-page delete confirmation modal instead of window.confirm")
-	}
+
 }
 
 func TestIndexIncludesGroupManagementControls(t *testing.T) {
@@ -249,7 +233,7 @@ func TestIndexIncludesGroupManagementControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"open-groups-button\"", "id=\"groups-backdrop\"", "id=\"group-form\"", "id=\"group-list\"", "id=\"save-group-sort-button\"", "data-action=\"manage-groups\"", "data-action=\"edit-group\"", "data-action=\"delete-group\"", "/api/groups/sort", "/api/groups/"} {
+	for _, want := range []string{`id="open-groups-button"`, `id="groups-dialog"`, `id="group-form"`, `id="group-list"`, `id="save-group-sort-button"`, `data-action="add-service"`, `class="empty-group button"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -270,7 +254,7 @@ func TestIndexIncludesGalleryControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"open-gallery-button\"", "id=\"gallery-backdrop\"", "id=\"gallery-grid\"", "data-gallery-filter=\"wallpaper\"", "data-gallery-filter=\"icon\"", "data-upload-type=\"icon\"", "data-upload-type=\"wallpaper\"", "formData.append('asset_type', assetType)", "formData.append('asset_type', 'icon')", "formData.append('asset_type', 'wallpaper')", "/api/assets", "delete-asset", "use-background-asset", "use-icon-asset", "galleryMode === 'background'"} {
+	for _, want := range []string{`id="open-gallery-button"`, `id="gallery-dialog"`, `id="gallery-grid"`, `id="gallery-search"`, `id="retry-gallery"`, `data-gallery-filter="wallpaper"`, `data-gallery-filter="icon"`, `data-upload-type="icon"`, `data-upload-type="wallpaper"`, `id="open-background-gallery-button"`, `id="open-icon-gallery-button"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -291,7 +275,7 @@ func TestIndexIncludesAdaptiveBackgroundControls(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"data-background-overlay=\"medium\"", "name=\"background_overlay\"", "backgroundOverlayAlpha", "var(--control-bg)", "backdrop-filter: blur(14px)", "class=\"inline-icon"} {
+	for _, want := range []string{`data-background-overlay="medium"`, `name="background_overlay"`, `id="settings-dialog"`, `id="settings-preview"`, `class="inline-icon`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}

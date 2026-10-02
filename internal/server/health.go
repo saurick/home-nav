@@ -90,19 +90,19 @@ func (c *StatusCache) Snapshot() StatusResponse {
 }
 
 func (c *StatusCache) UpdateConfig(cfg *Config) {
-	c.mu.RLock()
-	oldStatuses := make(map[string]ServiceStatus, len(c.statuses))
-	for id, status := range c.statuses {
-		oldStatuses[id] = status
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	oldHealth := make(map[string]HealthCheck, len(c.services))
+	for _, service := range c.services {
+		oldHealth[service.ID] = service.Health
 	}
-	c.mu.RUnlock()
 
 	statuses := make(map[string]ServiceStatus)
 	var services []Service
 	for _, group := range cfg.Groups {
 		for _, service := range group.Services {
 			services = append(services, service)
-			if old, ok := oldStatuses[service.ID]; ok && old.Type == service.Health.Type {
+			if old, ok := c.statuses[service.ID]; ok && oldHealth[service.ID] == service.Health {
 				old.Name = service.Name
 				old.GroupID = service.GroupID
 				old.GroupName = service.GroupName
@@ -124,8 +124,6 @@ func (c *StatusCache) UpdateConfig(cfg *Config) {
 		}
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.services = services
 	c.statuses = statuses
 }
@@ -154,7 +152,7 @@ func (c *StatusCache) CheckAll(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c.setStatus(checkService(ctx, c.client, service))
+			c.setStatus(service, checkService(ctx, c.client, service))
 		}()
 	}
 	wg.Wait()
@@ -168,10 +166,19 @@ func (c *StatusCache) servicesSnapshot() []Service {
 	return services
 }
 
-func (c *StatusCache) setStatus(status ServiceStatus) {
+func (c *StatusCache) setStatus(checked Service, status ServiceStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.statuses[status.ID] = status
+	// A check started before an edit must not restore a deleted or changed target.
+	for _, current := range c.services {
+		if current.ID == checked.ID && current.Health == checked.Health {
+			status.Name = current.Name
+			status.GroupID = current.GroupID
+			status.GroupName = current.GroupName
+			c.statuses[status.ID] = status
+			return
+		}
+	}
 }
 
 func checkService(ctx context.Context, client *http.Client, service Service) ServiceStatus {

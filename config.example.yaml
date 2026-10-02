@@ -26,6 +26,8 @@ groups:
     services:
       - id: dockge
         name: Dockge
+        # true 时显示在常用入口；省略或 false 时显示在所属分组。
+        pinned: false
         description: Docker Compose 管理入口，只提供跳转链接
         icon_text: D
         internal_url: https://192.168.1.10:5001

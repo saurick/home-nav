@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{.Title}}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v={{.AssetVersion}}">
+  <script id="navigation-data" type="application/json">{{.NavigationJSON}}</script>
+  <script id="ui-icon-data" type="application/json">{{iconSetJSON}}</script>
+  <script src="/assets/app.js?v={{.AssetVersion}}" defer></script>
+</head>
+<body class="home-nav" style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
+  <a class="skip-link" href="#main">跳到服务入口</a>
+  <header class="top-tools">
+    <div class="toolbar">
+      <div class="service-search" role="search">
+        {{icon "mdi:magnify"}}
+        <input id="service-search" type="search" placeholder="搜索名称或标签" aria-label="搜索入口名称或标签" aria-describedby="search-summary" autocomplete="off">
+        <kbd aria-hidden="true">/</kbd>
+        <button class="icon-action search-clear" id="clear-search" type="button" aria-label="清空搜索" hidden>{{icon "mdi:close"}}</button>
+      </div>
+      <div class="toolbar-actions">
+        <div class="access-mode-control" id="access-mode-control">
+          <button class="access-mode-trigger" id="access-mode-button" type="button" aria-label="优先访问入口，当前外网优先" aria-haspopup="menu" aria-expanded="false" aria-controls="access-mode-menu"><span id="access-mode-label">外网优先</span>{{icon "mdi:chevron-down"}}</button>
+          <div class="popover access-mode-menu" id="access-mode-menu" role="menu" aria-label="优先访问入口" hidden>
+            <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1"><span>外网优先</span><span class="access-mode-count"></span></button>
+            <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1"><span>内网 IP 优先</span><span class="access-mode-count"></span></button>
+            <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1"><span>内网域名优先</span><span class="access-mode-count"></span></button>
+            <p class="popover-note">数量为已配置地址；缺少时使用其他地址。</p>
+          </div>
+        </div>
+        <button class="button edit-mode-button" id="edit-mode-button" type="button" aria-pressed="false">{{icon "mdi:pencil-box-outline"}}<span>编辑</span></button>
+        <div class="tools-control">
+          <button class="icon-action" id="tools-menu-button" type="button" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" aria-controls="tools-menu">{{icon "mdi:dots-horizontal"}}</button>
+          <div class="popover tools-menu" id="tools-menu" role="menu" aria-label="更多操作" hidden>
+            <button id="open-groups-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:folder-cog-outline"}}分组管理</button>
+            <button id="open-gallery-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:image-multiple-outline"}}图库</button>
+            <button id="open-settings-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:image-edit-outline"}}页面设置</button>
+            <button id="density-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:format-list-bulleted"}}<span>显示密度：舒适</span></button>
+            <button id="refresh-navigation-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:arrow-down"}}重新读取列表</button>
+            {{if .Auth.Enabled}}<form method="post" action="/logout"><button type="submit" role="menuitem" tabindex="-1">{{icon "mdi:logout"}}退出登录</button></form>{{end}}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="edit-bar" id="edit-bar" hidden>
+      <span>{{icon "mdi:pencil-box-outline"}}正在编辑 <span class="edit-hint">点击编辑入口，使用拖拽把手调整位置</span></span>
+      <div><span id="sort-status" role="status">排序已保存</span><button class="button small" id="save-sort-button" type="button" hidden>重试保存</button><button class="button small" id="discard-sort-button" type="button" hidden>放弃排序</button><button class="button primary small" id="finish-edit-button" type="button">完成</button></div>
+    </div>
+  </header>
+  <main class="shell" id="main" tabindex="-1">
+    <div class="list-toolbar">
+      <p class="search-summary" id="search-summary" role="status" aria-live="polite"></p>
+      <label class="group-jump" id="group-jump-control" hidden>跳转分组<select id="group-jump" aria-label="跳转分组"><option value="">选择分组</option></select></label>
+    </div>
+    <section class="groups" id="groups">
+      <section class="group pinned-group" id="pinned-group" hidden>
+        <div class="group-title"><div class="group-heading"><button class="collapse-button icon-action" type="button" data-action="collapse-group" data-group-id="@pinned" aria-label="折叠常用入口" aria-expanded="true">{{icon "mdi:chevron-down"}}</button><h2>{{icon "mdi:star-outline"}}常用入口</h2><span class="group-count"></span></div></div>
+        <div class="icon-grid"></div>
+      </section>
+      {{range .Groups}}{{template "group" .}}{{end}}
+    </section>
+    <div class="empty-state" id="empty-state" hidden><h2 id="empty-title">暂无服务入口</h2><p id="empty-message">添加一个入口，让常用服务触手可及。</p><button class="button primary" id="empty-add-button" type="button" data-action="add-service">{{icon "mdi:plus"}}新增入口</button><button class="button" id="empty-clear-button" type="button" hidden>清空搜索</button></div>
+    <noscript><p class="notice">启用浏览器 JavaScript 后，可以搜索和管理入口。图标链接仍可直接打开服务。</p></noscript>
+  </main>
+
+  <div class="popover item-menu" id="item-menu" role="menu" aria-label="入口操作" hidden></div>
+
+  <dialog class="modal status-modal" id="status-dialog" aria-labelledby="status-title">
+    <div class="modal-head"><h2 id="status-title">入口与状态</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭入口与状态">{{icon "mdi:close"}}</button></div>
+    <div class="dialog-body"><dl class="status-details"><dt>当前入口</dt><dd id="status-entry"></dd><dt>访问地址</dt><dd id="status-entry-url"></dd><dt>后台探测</dt><dd id="status-result"></dd><dt>探测目标</dt><dd id="status-target"></dd><dt>最近检查</dt><dd id="status-time"></dd></dl><p class="help">状态来自导航服务器的定时探测，探测目标可能与当前入口不同。探测正常不代表其他地址或服务登录已验证。</p></div>
+    <div class="form-actions"><button class="button" id="status-copy" type="button">{{icon "mdi:content-copy"}}复制地址</button><a class="button primary" id="status-open" target="_blank" rel="noopener noreferrer">{{icon "mdi:open-in-new"}}打开入口</a></div>
+  </dialog>
+
+  <dialog class="modal editor-modal" id="edit-dialog" aria-labelledby="edit-title">
+    <div class="modal-head"><h2 id="edit-title">编辑入口</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭入口编辑">{{icon "mdi:close"}}</button></div>
+    <form id="edit-form" class="dialog-form" novalidate>
+      <input type="hidden" name="id">
+      <div class="dialog-body">
+        <div class="form-grid">
+          <div class="field"><label for="service-name">名称 <span class="required">*</span></label><input id="service-name" name="name" maxlength="80" autocomplete="off" required></div>
+          <div class="field"><label for="service-group">分组</label><select id="service-group" name="group_id"></select></div>
+        </div>
+        <fieldset class="address-section"><legend>访问地址 <span class="required">*</span></legend><p class="help">至少填写一种地址；缺少优先地址时，会使用其他已配置地址。</p><div id="primary-address"></div><details id="extra-addresses"><summary>补充其他访问地址</summary><div class="form-grid" id="secondary-addresses"></div></details></fieldset>
+        <div id="address-field-source" hidden>
+          <div class="field" data-address="external"><label for="service-external">外网地址</label><input id="service-external" name="external_url" type="url" placeholder="https://example.com" autocomplete="off"></div>
+          <div class="field" data-address="internal"><label for="service-internal">内网 IP 地址</label><input id="service-internal" name="internal_url" type="url" placeholder="https://192.168.1.10:5001" autocomplete="off"></div>
+          <div class="field" data-address="internal_domain"><label for="service-domain">内网域名地址</label><input id="service-domain" name="internal_domain_url" type="url" placeholder="https://service-lan.example.com" autocomplete="off"></div>
+        </div>
+        <label class="check-field"><input id="service-pinned" name="pinned" type="checkbox">{{icon "mdi:star-outline"}}固定到常用入口</label>
+        <details class="form-section" id="icon-section"><summary>图标与文字</summary><div class="icon-editor"><div class="card-preview" id="service-preview" aria-label="入口预览"></div><div class="form-grid"><div class="field full"><label for="service-icon">图标或图片 <a class="field-link" href="https://icon-sets.iconify.design/" target="_blank" rel="noopener noreferrer">浏览在线图标</a></label><input id="service-icon" name="icon" placeholder="mdi:nas 或图片地址"><div class="inline-actions"><button class="button" type="button" id="open-icon-gallery-button">{{icon "mdi:image-multiple-outline"}}选择图片</button><button class="button" type="button" id="upload-icon-button">{{icon "mdi:upload"}}上传图片</button></div></div><div class="field full"><label for="service-icon-text">图标文字</label><input id="service-icon-text" name="icon_text" maxlength="12" placeholder="没有图片时显示，例如 NAS"></div></div></div></details>
+        <details class="form-section" id="info-section"><summary>描述、标签与备注</summary><div class="form-grid"><div class="field full"><label for="service-description">描述</label><input id="service-description" name="description" maxlength="140"></div><div class="field full"><label for="service-tags">标签</label><input id="service-tags" name="tags" placeholder="docker, tools"><p class="help">用逗号分隔，可用于搜索。</p></div><div class="field full"><label for="service-notes">备注</label><textarea id="service-notes" name="notes" rows="3"></textarea></div></div></details>
+        <details class="form-section" id="health-section"><summary>服务监测</summary><p class="help">监测只检查网页响应或端口连接，不控制真实服务。</p><div class="form-grid"><div class="field full"><label for="service-health-type">监测方式</label><select id="service-health-type" name="health_type"><option value="disabled">不监测</option><option value="http">网页响应（HTTP）</option><option value="tcp">端口连接（TCP）</option></select></div><div class="field full" data-health-for="http"><label for="service-health-url">网页探测地址</label><input id="service-health-url" name="health_url" type="url" placeholder="http://service/healthz"><button class="text-button" id="use-entry-for-health" type="button">使用当前访问地址</button></div><div class="field" data-health-for="http"><label for="service-health-status">预期状态码</label><input id="service-health-status" name="health_expect_status" type="number" min="100" max="599" placeholder="200"></div><div class="field full" data-health-for="tcp"><label for="service-health-address">端口探测地址</label><input id="service-health-address" name="health_address" placeholder="192.168.1.10:443"></div><div class="field" data-health-for="http tcp"><label for="service-health-timeout">超时时间</label><input id="service-health-timeout" name="health_timeout" placeholder="2s"><p class="help">例如 2s 或 500ms。</p></div></div></details>
+        <p class="form-feedback" id="edit-feedback" role="alert" hidden></p>
+      </div>
+      <div class="form-actions"><button class="button danger-quiet" type="button" id="delete-service-button" hidden>{{icon "mdi:trash-can-outline"}}删除入口</button><span class="action-spacer"></span><button class="button" type="button" data-close>取消</button><button class="button primary" id="save-service-button" type="submit">保存</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="modal-head"><h2 id="settings-title">页面设置</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭页面设置">{{icon "mdi:close"}}</button></div>
+    <form id="settings-form" class="dialog-form" novalidate><div class="dialog-body"><div class="settings-preview" id="settings-preview"><div class="preview-caption">背景预览</div><div class="preview-card"><span class="preview-symbol">{{icon "mdi:web"}}</span><span>服务入口</span><span class="preview-route">内网域名</span></div></div><div class="form-grid"><div class="field"><label for="background-color">背景颜色</label><div class="color-row"><input name="background_color_picker" type="color" aria-label="选择背景颜色"><input id="background-color" name="background_color" placeholder="#000000" autocomplete="off"></div></div><div class="field"><label for="background-overlay">壁纸遮罩</label><select id="background-overlay" name="background_overlay"><option value="low">轻</option><option value="medium">适中</option><option value="high">深</option></select></div><div class="field full"><label for="background-image">背景图片</label><input id="background-image" name="background_image" placeholder="选择图库图片，或粘贴图片地址"><div class="inline-actions"><button class="button" type="button" id="open-background-gallery-button">{{icon "mdi:image-multiple-outline"}}选择图片</button><button class="button" type="button" id="upload-background-button">{{icon "mdi:upload"}}上传图片</button></div><p class="help">更换图片后，与颜色和遮罩一起保存。支持 PNG、JPEG、WebP、GIF、SVG，单张不超过 8 MB。</p></div></div><p class="form-feedback" id="settings-feedback" role="alert" hidden></p></div><div class="form-actions"><button class="button text-button" type="button" id="reset-background-button">恢复默认</button><span class="action-spacer"></span><button class="button" type="button" data-close>取消</button><button class="button primary" type="submit">保存设置</button></div></form>
+  </dialog>
+
+  <dialog class="modal gallery-modal" id="gallery-dialog" aria-labelledby="gallery-title">
+    <div class="modal-head"><div><h2 id="gallery-title">图库</h2><p class="help" id="gallery-help">管理已上传的图片。</p></div><button class="close-button icon-action" type="button" data-close aria-label="关闭图库">{{icon "mdi:close"}}</button></div>
+    <div class="dialog-body"><div class="gallery-toolbar"><div class="gallery-tabs" role="tablist" aria-label="图库筛选"><button class="gallery-tab" type="button" role="tab" data-gallery-filter="all" aria-controls="gallery-grid" aria-selected="true">全部</button><button class="gallery-tab" type="button" role="tab" data-gallery-filter="wallpaper" aria-controls="gallery-grid" aria-selected="false" tabindex="-1">壁纸</button><button class="gallery-tab" type="button" role="tab" data-gallery-filter="icon" aria-controls="gallery-grid" aria-selected="false" tabindex="-1">图标</button></div><label class="gallery-search"><span class="sr-only">搜索图片名称</span><input id="gallery-search" type="search" placeholder="搜索图片名称" autocomplete="off"></label><div class="inline-actions"><button class="button" type="button" data-upload-type="icon">{{icon "mdi:upload"}}上传图标</button><button class="button" type="button" data-upload-type="wallpaper">{{icon "mdi:upload"}}上传壁纸</button></div></div><p class="gallery-summary" id="gallery-summary" role="status" aria-live="polite"></p><div class="gallery-empty" id="gallery-empty" hidden><p id="gallery-message">正在读取图库…</p><button class="button" id="retry-gallery" type="button" hidden>重新读取</button></div><div class="gallery-grid" id="gallery-grid" role="tabpanel" aria-label="图片资源"></div></div>
+  </dialog>
+
+  <dialog class="modal" id="groups-dialog" aria-labelledby="groups-title">
+    <div class="modal-head"><h2 id="groups-title">分组管理</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭分组管理">{{icon "mdi:close"}}</button></div>
+    <div class="dialog-body"><div class="group-manager-toolbar"><button class="button" type="button" id="add-group-button">{{icon "mdi:plus"}}新增分组</button><button class="button" type="button" id="save-group-sort-button" disabled>保存分组顺序</button></div><form id="group-form" class="group-form" novalidate hidden><input type="hidden" name="id"><div class="field"><label for="group-name">分组名称</label><input id="group-name" name="name" maxlength="80" required></div><div class="inline-actions"><button class="button" type="button" id="cancel-group-button">取消</button><button class="button primary" type="submit">保存分组</button></div><p class="form-feedback" id="group-feedback" role="alert" hidden></p></form><div class="group-list" id="group-list"></div></div><div class="form-actions"><button class="button" type="button" data-close>关闭</button></div>
+  </dialog>
+
+  <dialog class="modal small-modal" id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <div class="modal-head"><h2 id="delete-title">删除导航入口</h2></div><div class="dialog-body"><p id="delete-description"></p><p class="help" id="delete-note">只从导航配置移除入口，不会删除、停止或重启真实服务。</p><p class="form-feedback" id="delete-feedback" role="alert" hidden></p></div><div class="form-actions"><button class="button" type="button" data-close autofocus>取消</button><button class="button danger" type="button" id="confirm-delete-button">删除</button></div>
+  </dialog>
+
+  <dialog class="modal small-modal" id="discard-dialog" aria-labelledby="discard-title"><div class="modal-head"><h2 id="discard-title">还有未保存的修改</h2></div><div class="dialog-body"><p>关闭后，这次修改将不会保存。</p></div><div class="form-actions"><button class="button primary" id="continue-editing" type="button" autofocus>继续编辑</button><button class="button" id="discard-changes" type="button">放弃修改</button></div></dialog>
+  <dialog class="modal image-modal" id="image-dialog" aria-labelledby="image-title"><div class="modal-head"><h2 id="image-title">图片预览</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭图片预览">{{icon "mdi:close"}}</button></div><div class="dialog-body"><img id="image-preview" alt=""></div></dialog>
+  <dialog class="modal small-modal" id="copy-dialog" aria-labelledby="copy-title"><div class="modal-head"><h2 id="copy-title">复制地址</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭复制地址">{{icon "mdi:close"}}</button></div><div class="dialog-body"><p class="help">浏览器未允许自动复制，请选择并复制下面的地址。</p><label class="field" for="manual-copy"><span>访问地址</span><input id="manual-copy" readonly></label></div><div class="form-actions"><button class="button" type="button" data-close>完成</button></div></dialog>
+
+  <input id="upload-file" class="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon" aria-hidden="true" tabindex="-1">
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toast-message"></span><button class="icon-action" id="toast-close" type="button" aria-label="关闭提示">{{icon "mdi:close"}}</button></div>
+  <template id="service-template">{{template "service" .EmptyService}}</template>
+  <template id="group-template"><section class="group" data-group-id=""><div class="group-title"><div class="group-heading"><button class="collapse-button icon-action" type="button" data-action="collapse-group" aria-expanded="true">{{icon "mdi:chevron-down"}}</button><h2></h2><span class="group-count"></span></div><div class="group-actions"><button class="icon-action" type="button" data-action="add-service">{{icon "mdi:plus"}}</button></div></div><div class="icon-grid"></div><button class="empty-group button" type="button" data-action="add-service" hidden>{{icon "mdi:plus"}}添加第一个入口</button></section></template>
+</body>
+</html>
+
+{{define "group"}}
+<section class="group" data-group-id="{{.ID}}"><div class="group-title"><div class="group-heading"><button class="collapse-button icon-action" type="button" data-action="collapse-group" data-group-id="{{.ID}}" aria-label="折叠{{.Name}}" aria-expanded="true">{{icon "mdi:chevron-down"}}</button><h2>{{.Name}}</h2><span class="group-count">{{len .Services}} 个入口</span></div><div class="group-actions"><button class="icon-action" type="button" data-action="add-service" data-group-id="{{.ID}}" aria-label="在{{.Name}}新增入口">{{icon "mdi:plus"}}</button></div></div><div class="icon-grid">{{range .Services}}{{template "service" .}}{{end}}</div><button class="empty-group button" type="button" data-action="add-service" data-group-id="{{.ID}}" {{if .Services}}hidden{{end}}>{{icon "mdi:plus"}}添加第一个入口</button></section>
+{{end}}
+{{define "service"}}
+<article class="app-icon" data-service-id="{{.ID}}" data-icon-value="{{.Icon}}" data-icon-text="{{.IconText}}" data-icon-name="{{.Name}}" data-internal-url="{{.InternalURL}}" data-internal-domain-url="{{.InternalDomainURL}}" data-external-url="{{.ExternalURL}}"><div class="card-top"><button class="pin-button icon-action" type="button" data-action="pin" aria-label="{{if .Pinned}}取消置顶{{else}}置顶{{end}}{{.Name}}" aria-pressed="{{.Pinned}}">{{icon "mdi:star-outline"}}</button><button class="drag-handle icon-action" type="button" data-action="drag" aria-label="拖拽{{.Name}}，也可用方向键调整位置" hidden>{{icon "mdi:drag"}}</button><button class="card-more icon-action" type="button" data-action="service-menu" aria-label="{{.Name}}更多操作" aria-haspopup="menu">{{icon "mdi:dots-horizontal"}}</button></div><div class="icon-launcher"><a class="icon-button" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" aria-label="打开{{.Name}}">{{serviceIcon .}}</a></div><a class="app-name" href="{{openHref .DefaultURL}}" target="_blank" rel="noopener noreferrer" tabindex="-1" title="{{.Name}}">{{.Name}}</a><span class="match-tags" hidden></span><div class="card-status"><button class="health-dot" type="button" data-action="status" data-status="unknown" aria-label="{{.Name}}，查看后台探测状态" {{if eq .Health.Type "disabled"}}hidden{{end}}></button><button class="entry-route" type="button" data-action="status" aria-label="{{.Name}}入口与状态详情">入口详情</button></div></article>
+{{end}}
