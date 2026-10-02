@@ -340,7 +340,7 @@
     $('.drag-handle', node).setAttribute('aria-label', '拖拽' + item.name + '，也可用方向键调整位置');
     $('.card-more', node).setAttribute('aria-label', item.name + '更多操作');
     const route = $('.entry-route', node);
-    route.textContent = (entry.fallback ? '回退·' : '') + (modeLabels[entry.type] || '未设置');
+    route.textContent = (modeLabels[entry.type] || '未设置') + (entry.fallback ? '回退' : '');
     route.classList.toggle('is-fallback', entry.fallback);
     route.setAttribute('aria-label', item.name + '，' + hint + '，查看详情');
     route.title = hint + '；查看入口与状态';
