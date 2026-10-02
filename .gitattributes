@@ -1,0 +1,2 @@
+# Keep vendored SVG bytes identical to the recorded upstream checksums.
+deploy/official-icons/*.svg -whitespace
