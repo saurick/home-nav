@@ -11,7 +11,7 @@
   <script id="ui-icon-data" type="application/json">{{iconSetJSON}}</script>
   <script src="/assets/app.js?v={{.AssetVersion}}" defer></script>
 </head>
-<body class="home-nav" style="{{.BackgroundCSS}}" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
+<body class="home-nav" style="{{.BackgroundCSS}}" data-density="compact" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
   <a class="skip-link" href="#main">跳到服务入口</a>
   <header class="top-tools">
     <div class="toolbar">
@@ -38,7 +38,7 @@
             <button id="open-groups-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:folder-cog-outline"}}分组管理</button>
             <button id="open-gallery-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:image-multiple-outline"}}图库</button>
             <button id="open-settings-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:image-edit-outline"}}页面设置</button>
-            <button id="density-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:format-list-bulleted"}}<span>显示密度：舒适</span></button>
+            <button id="density-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:format-list-bulleted"}}<span>显示密度：紧凑</span></button>
             <button id="refresh-navigation-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:arrow-down"}}重新读取列表</button>
             {{if .Auth.Enabled}}<form method="post" action="/logout"><button type="submit" role="menuitem" tabindex="-1">{{icon "mdi:logout"}}退出登录</button></form>{{end}}
           </div>

@@ -68,7 +68,7 @@
   let preferences;
   try { preferences = JSON.parse(readStorage('home-nav.view-preferences', '{}')); } catch (_) { preferences = {}; }
   if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) preferences = {};
-  preferences.density = preferences.density === 'compact' ? 'compact' : 'comfortable';
+  preferences.density = preferences.density === 'comfortable' ? 'comfortable' : 'compact';
   preferences.collapsed = Array.isArray(preferences.collapsed) ? preferences.collapsed.filter(id => typeof id === 'string') : [];
   function savePreferences() { writeStorage('home-nav.view-preferences', JSON.stringify(preferences)); }
   const allServices = () => navigation.groups.flatMap(group => group.services);
