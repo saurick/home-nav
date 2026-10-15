@@ -56,7 +56,8 @@ func handleUIAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 type navigationService struct {
-	ID string `json:"id"`
+	ID                string `json:"id"`
+	InternalAccessURL string `json:"internal_access_url"`
 	ServiceUpdateRequest
 }
 
@@ -67,18 +68,19 @@ type navigationGroup struct {
 }
 
 type navigationData struct {
-	Groups     []navigationGroup `json:"groups"`
-	Appearance Appearance        `json:"appearance"`
+	Groups            []navigationGroup `json:"groups"`
+	Appearance        Appearance        `json:"appearance"`
+	DefaultAccessMode string            `json:"default_access_mode"`
 }
 
 // Only navigation fields cross this boundary; auth and local storage paths stay on the server.
-func navigationState(cfg *Config) navigationData {
-	data := navigationData{Groups: make([]navigationGroup, 0, len(cfg.Groups)), Appearance: cfg.Appearance}
+func navigationState(cfg *Config, requestHost string) navigationData {
+	data := navigationData{Groups: make([]navigationGroup, 0, len(cfg.Groups)), Appearance: cfg.Appearance, DefaultAccessMode: cfg.Access.defaultMode(requestHost)}
 	for _, group := range cfg.Groups {
 		view := navigationGroup{ID: group.ID, Name: group.Name, Services: make([]navigationService, 0, len(group.Services))}
 		for _, service := range group.Services {
 			pinned := service.Pinned
-			view.Services = append(view.Services, navigationService{ID: service.ID, ServiceUpdateRequest: ServiceUpdateRequest{
+			view.Services = append(view.Services, navigationService{ID: service.ID, InternalAccessURL: cfg.Access.internalURL(service.InternalURL, requestHost), ServiceUpdateRequest: ServiceUpdateRequest{
 				Name: service.Name, Description: service.Description, IconText: service.IconText, Icon: service.Icon,
 				InternalURL: service.InternalURL, InternalDomainURL: service.InternalDomainURL, ExternalURL: service.ExternalURL,
 				Tags: append([]string{}, service.Tags...), Notes: service.Notes, GroupID: group.ID, Pinned: &pinned,
@@ -91,8 +93,8 @@ func navigationState(cfg *Config) navigationData {
 	return data
 }
 
-func navigationJSON(cfg *Config) template.JS {
-	body, _ := json.Marshal(navigationState(cfg))
+func navigationJSON(cfg *Config, requestHost string) template.JS {
+	body, _ := json.Marshal(navigationState(cfg, requestHost))
 	return template.JS(body)
 }
 
@@ -107,7 +109,7 @@ func (s *Server) handleNavigation(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(navigationState(s.currentConfig()))
+	_ = json.NewEncoder(w).Encode(navigationState(s.currentConfig(), r.Host))
 }
 
 func userError(message string) (string, string) {

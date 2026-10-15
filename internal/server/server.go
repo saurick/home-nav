@@ -44,9 +44,10 @@ type PageData struct {
 }
 
 type LoginData struct {
-	Title    string
-	Error    string
-	ReturnTo string
+	DefaultAccessMode string
+	Title             string
+	Error             string
+	ReturnTo          string
 }
 
 type SetupData struct {
@@ -276,7 +277,7 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 	s.statuses.UpdateConfig(cfg)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"group": group, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"group": group, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleGroupSort(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +314,7 @@ func (s *Server) handleGroupSort(w http.ResponseWriter, r *http.Request) {
 	s.statuses.UpdateConfig(cfg)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +351,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 	s.statuses.UpdateConfig(cfg)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"service": service, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"service": service, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleServiceSort(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +388,7 @@ func (s *Server) handleServiceSort(w http.ResponseWriter, r *http.Request) {
 	s.statuses.UpdateConfig(cfg)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
@@ -437,10 +438,10 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if r.Method == http.MethodDelete {
-		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id, "navigation": navigationState(cfg)})
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id, "navigation": navigationState(cfg, r.Host)})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"group": group, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"group": group, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
@@ -476,7 +477,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		s.statuses.UpdateConfig(cfg)
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id, "navigation": navigationState(cfg)})
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted": id, "navigation": navigationState(cfg, r.Host)})
 		return
 	}
 
@@ -506,7 +507,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"service":    service,
-		"navigation": navigationState(cfg),
+		"navigation": navigationState(cfg, r.Host),
 	})
 }
 
@@ -542,7 +543,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"appearance": cfg.Appearance, "navigation": navigationState(cfg)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"appearance": cfg.Appearance, "navigation": navigationState(cfg, r.Host)})
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -569,7 +570,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Auth:           cfg.Auth,
 		Appearance:     cfg.Appearance,
 		BackgroundCSS:  backgroundCSS(cfg.Appearance),
-		NavigationJSON: navigationJSON(cfg),
+		NavigationJSON: navigationJSON(cfg, r.Host),
 		AssetVersion:   uiAssetVersion,
 	})
 }
@@ -634,16 +635,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cfg := s.currentConfig()
-		s.renderLogin(w, LoginData{Title: cfg.Title, ReturnTo: returnTo})
+		s.renderLogin(w, LoginData{Title: cfg.Title, DefaultAccessMode: cfg.Access.defaultMode(r.Host), ReturnTo: returnTo})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			cfg := s.currentConfig()
-			s.renderLogin(w, LoginData{Title: cfg.Title, Error: "登录请求无效", ReturnTo: returnTo})
+			s.renderLogin(w, LoginData{Title: cfg.Title, DefaultAccessMode: cfg.Access.defaultMode(r.Host), Error: "登录请求无效", ReturnTo: returnTo})
 			return
 		}
 		if !s.validCredentials(r.FormValue("username"), r.FormValue("password")) {
 			cfg := s.currentConfig()
-			s.renderLogin(w, LoginData{Title: cfg.Title, Error: "账号或密码不正确", ReturnTo: returnTo})
+			s.renderLogin(w, LoginData{Title: cfg.Title, DefaultAccessMode: cfg.Access.defaultMode(r.Host), Error: "账号或密码不正确", ReturnTo: returnTo})
 			return
 		}
 		cfg := s.currentConfig()
@@ -1108,6 +1109,12 @@ func findService(cfg *Config, id string) (int, int) {
 
 func cloneConfig(cfg *Config) *Config {
 	clone := *cfg
+	if cfg.Access.HostAliases != nil {
+		clone.Access.HostAliases = make(map[string][]string, len(cfg.Access.HostAliases))
+		for host, aliases := range cfg.Access.HostAliases {
+			clone.Access.HostAliases[host] = append([]string(nil), aliases...)
+		}
+	}
 	clone.Groups = make([]Group, len(cfg.Groups))
 	for gi, group := range cfg.Groups {
 		clone.Groups[gi] = group
@@ -1787,6 +1794,7 @@ const loginTemplate = `<!doctype html>
   </main>
   <script>
     const accessModeKey = 'home-nav.access-mode';
+    const defaultAccessMode = {{.DefaultAccessMode}};
     const accessModeControl = document.querySelector('#access-mode-control');
     const accessModeButton = document.querySelector('#access-mode-button');
     const accessModeLabel = document.querySelector('#access-mode-label');
@@ -1798,13 +1806,13 @@ const loginTemplate = `<!doctype html>
     function savedAccessMode() {
       try {
         const mode = localStorage.getItem(accessModeKey);
-        return accessModes.includes(mode) ? mode : 'external';
+        return accessModes.includes(mode) ? mode : defaultAccessMode;
       } catch (_) {
-        return 'external';
+        return defaultAccessMode;
       }
     }
     function setAccessMode(mode) {
-      const accessMode = accessModes.includes(mode) ? mode : 'external';
+      const accessMode = accessModes.includes(mode) ? mode : defaultAccessMode;
       document.body.dataset.accessMode = accessMode;
       const selectedOption = accessModeOptions.find(option => option.dataset.accessMode === accessMode);
       const label = selectedOption.textContent.trim();

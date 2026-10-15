@@ -24,6 +24,7 @@ type Config struct {
 	Title         string        `yaml:"title"`
 	Subtitle      string        `yaml:"subtitle"`
 	Auth          AuthConfig    `yaml:"auth"`
+	Access        AccessConfig  `yaml:"access,omitempty"`
 	Assets        AssetsConfig  `yaml:"assets"`
 	Appearance    Appearance    `yaml:"appearance"`
 	CheckInterval time.Duration `yaml:"check_interval"`
@@ -157,6 +158,9 @@ func (c *Config) NormalizeAndValidate() error {
 		return fmt.Errorf("配置错误: check_interval 不能小于 5s")
 	}
 	if err := normalizeAuth(&c.Auth); err != nil {
+		return err
+	}
+	if err := c.Access.validate(); err != nil {
 		return err
 	}
 	if err := normalizeAssets(&c.Assets); err != nil {

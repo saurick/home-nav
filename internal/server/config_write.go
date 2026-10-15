@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -33,6 +34,19 @@ func renderConfigYAML(cfg *Config) string {
 	line(&b, 0, "title: %s", yamlString(cfg.Title))
 	line(&b, 0, "subtitle: %s", yamlString(cfg.Subtitle))
 	line(&b, 0, "check_interval: %s", yamlString(durationString(cfg.CheckInterval)))
+	if len(cfg.Access.HostAliases) > 0 {
+		b.WriteString("\n")
+		line(&b, 0, "access:")
+		line(&b, 1, "host_aliases:")
+		hosts := make([]string, 0, len(cfg.Access.HostAliases))
+		for host := range cfg.Access.HostAliases {
+			hosts = append(hosts, host)
+		}
+		sort.Strings(hosts)
+		for _, host := range hosts {
+			line(&b, 2, "%s: [%s]", yamlString(host), quotedAliases(cfg.Access.HostAliases[host]))
+		}
+	}
 	if cfg.Auth.Enabled || cfg.Auth.Username != "" || cfg.Auth.Password != "" || cfg.Auth.SessionSecret != "" {
 		b.WriteString("\n")
 		line(&b, 0, "auth:")
@@ -110,6 +124,14 @@ func line(b *strings.Builder, indent int, format string, args ...any) {
 func yamlString(value string) string {
 	raw, _ := json.Marshal(value)
 	return string(raw)
+}
+
+func quotedAliases(aliases []string) string {
+	quoted := make([]string, len(aliases))
+	for i, alias := range aliases {
+		quoted[i] = yamlString(alias)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 func durationString(value time.Duration) string {

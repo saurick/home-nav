@@ -152,8 +152,8 @@ func TestPinnedServiceRoundTripAndLegacyUpdate(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(result.Navigation, navigationState(cfg)) {
-			t.Fatalf("mutation response must match persisted navigation: got %#v, want %#v", result.Navigation.Groups[0].Services[0], navigationState(cfg).Groups[0].Services[0])
+		if !reflect.DeepEqual(result.Navigation, navigationState(cfg, "example.com")) {
+			t.Fatalf("mutation response must match persisted navigation: got %#v, want %#v", result.Navigation.Groups[0].Services[0], navigationState(cfg, "example.com").Groups[0].Services[0])
 		}
 	}
 	sort := `{"groups":[{"group_id":"ops","service_ids":["metrics"]},{"group_id":"tools","service_ids":["app","drawio"]}]}`

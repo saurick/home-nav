@@ -2,6 +2,12 @@ title: Home
 subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 
+# 同一服务器的 IP 别名；从别名访问导航时，内网 IP 链接使用当前别名。
+# 仅填写确认属于同一台主机的地址，不填写客户端 IP 或整段网段。
+access:
+  host_aliases:
+    "192.168.1.10": ["10.20.0.10", "100.80.0.10"]
+
 auth:
   # 保持下面的示例账号、密码和 session_secret 时，首次打开会进入 /setup。
   # 真实运行配置请使用私有 services.yaml，不要提交真实密码。

@@ -63,8 +63,8 @@
   function writeStorage(key, value) {
     try { localStorage.setItem(key, value); } catch (_) {}
   }
-  let accessMode = readStorage('home-nav.access-mode', 'external');
-  if (!modes.includes(accessMode)) accessMode = 'external';
+  let accessMode = readStorage('home-nav.access-mode', navigation.default_access_mode);
+  if (!modes.includes(accessMode)) accessMode = navigation.default_access_mode;
   let preferences;
   try { preferences = JSON.parse(readStorage('home-nav.view-preferences', '{}')); } catch (_) { preferences = {}; }
   if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) preferences = {};
@@ -76,10 +76,13 @@
   const group = id => navigation.groups.find(item => item.id === id);
   const serviceID = target => target.closest('[data-service-id]')?.dataset.serviceId;
 
+  function entryURL(item, type) {
+    return type === 'internal' ? item.internal_access_url : item[urlFields[type]];
+  }
   function preferredEntry(item, mode = accessMode) {
     const order = mode === 'internal' ? ['internal', 'internal_domain', 'external'] : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
     const type = order.find(candidate => item[urlFields[candidate]]);
-    return { type: type || '', url: type ? item[urlFields[type]] : '', fallback: Boolean(type && type !== mode) };
+    return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode) };
   }
   function entryHint(entry) {
     return entry.fallback ? '未配置' + modeLabels[accessMode] + '地址，使用' + modeLabels[entry.type] + '地址' : modeLabels[entry.type] + '地址';
@@ -811,6 +814,7 @@
   function payloadFor(item) {
     const payload = { ...item, health: { ...item.health }, tags: [...(item.tags || [])] };
     delete payload.id;
+    delete payload.internal_access_url;
     return payload;
   }
   async function togglePin(id, button) {
@@ -844,7 +848,7 @@
     const title = document.createElement('p'); title.className = 'menu-heading'; title.textContent = item.name; menu.append(title);
     const missing = [];
     for (const type of modes) {
-      const url = item[urlFields[type]];
+      const url = entryURL(item, type);
       if (!url) { missing.push(modeLabels[type]); continue; }
       const row = document.createElement('div'); row.className = 'menu-entry';
       const label = document.createElement('span'); label.className = 'menu-entry-label'; label.textContent = modeLabels[type];
