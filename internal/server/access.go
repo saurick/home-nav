@@ -10,13 +10,36 @@ import (
 	"strings"
 )
 
-// HostAliases describes alternate IPs of the same host, never a subnet-wide rewrite.
 type AccessConfig struct {
+	// HomeHost is a stable DNS name identifying services on the navigation host.
+	HomeHost     string           `yaml:"home_host,omitempty"`
+	DefaultPorts []int            `yaml:"default_ports,omitempty"`
+	NetworkPorts map[string][]int `yaml:"network_ports,omitempty"`
+	// Explicit IP aliases remain supported for configurations without a stable name.
 	HostAliases map[string][]string `yaml:"host_aliases,omitempty"`
 	AliasPorts  map[string][]int    `yaml:"alias_ports,omitempty"`
 }
 
 func (a AccessConfig) validate() error {
+	if a.HomeHost != "" {
+		if !validHomeHost(a.HomeHost) {
+			return fmt.Errorf("配置错误: access.home_host 必须是小写域名，不含协议、端口或路径")
+		}
+	} else if a.DefaultPorts != nil || len(a.NetworkPorts) > 0 {
+		return fmt.Errorf("配置错误: access.default_ports 和 network_ports 需要 home_host")
+	}
+	if err := validateAccessPorts("default_ports", a.DefaultPorts); err != nil {
+		return err
+	}
+	for network, ports := range a.NetworkPorts {
+		prefix, err := netip.ParsePrefix(network)
+		if err != nil || prefix != prefix.Masked() || prefix.String() != network || !internalNetwork(prefix) {
+			return fmt.Errorf("配置错误: access.network_ports 必须使用规范的内网 CIDR: %q", network)
+		}
+		if err := validateAccessPorts(network, ports); err != nil {
+			return err
+		}
+	}
 	seen := make(map[string]bool)
 	aliasHosts := make(map[string]bool)
 	for source, aliases := range a.HostAliases {
@@ -38,23 +61,85 @@ func (a AccessConfig) validate() error {
 		if !aliasHosts[alias] {
 			return fmt.Errorf("配置错误: access.alias_ports 地址 %q 未在 host_aliases 中声明", alias)
 		}
-		seenPorts := make(map[int]bool)
-		for _, port := range ports {
-			if port < 1 || port > 65535 || seenPorts[port] {
-				return fmt.Errorf("配置错误: access.alias_ports 必须使用不重复的 1-65535 端口: %q", alias)
-			}
-			seenPorts[port] = true
+		if err := validateAccessPorts(alias, ports); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (a AccessConfig) requestAlias(requestHost string) (source, target string) {
-	host := requestHost
+var internalNetworks = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("fc00::/7"),
+}
+
+func internalNetwork(prefix netip.Prefix) bool {
+	return slices.ContainsFunc(internalNetworks, func(network netip.Prefix) bool {
+		return network.Addr().BitLen() == prefix.Addr().BitLen() && network.Bits() <= prefix.Bits() && network.Contains(prefix.Addr())
+	})
+}
+
+func validHomeHost(host string) bool {
+	if len(host) > 253 || !strings.Contains(host, ".") || strings.ToLower(host) != host {
+		return false
+	}
+	if _, err := netip.ParseAddr(host); err == nil {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validateAccessPorts(name string, ports []int) error {
+	seen := make(map[int]bool)
+	for _, port := range ports {
+		if port < 1 || port > 65535 || seen[port] {
+			return fmt.Errorf("配置错误: access 端口必须为不重复的 1-65535 整数: %q", name)
+		}
+		seen[port] = true
+	}
+	return nil
+}
+
+func accessRequestHost(host string) string {
 	if value, _, err := net.SplitHostPort(host); err == nil {
 		host = value
 	}
-	ip, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	return strings.Trim(host, "[]")
+}
+
+func (a AccessConfig) homeTarget(requestHost string) string {
+	if a.HomeHost == "" {
+		return ""
+	}
+	host := accessRequestHost(requestHost)
+	if strings.EqualFold(strings.TrimSuffix(host, "."), a.HomeHost) {
+		return a.HomeHost
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || ip.Zone() != "" || ip.Is4In6() {
+		return ""
+	}
+	if internalNetwork(netip.PrefixFrom(ip, ip.BitLen())) {
+		return ip.String()
+	}
+	return ""
+}
+
+func (a AccessConfig) requestAlias(requestHost string) (source, target string) {
+	ip, err := netip.ParseAddr(accessRequestHost(requestHost))
 	if err != nil {
 		return "", ""
 	}
@@ -69,6 +154,9 @@ func (a AccessConfig) requestAlias(requestHost string) (source, target string) {
 }
 
 func (a AccessConfig) defaultMode(requestHost string) string {
+	if a.homeTarget(requestHost) != "" {
+		return "internal"
+	}
 	if _, target := a.requestAlias(requestHost); target != "" {
 		return "internal"
 	}
@@ -76,26 +164,50 @@ func (a AccessConfig) defaultMode(requestHost string) string {
 }
 
 func (a AccessConfig) internalURL(raw, requestHost string) string {
-	source, target := a.requestAlias(requestHost)
-	if target == "" || raw == "" {
-		return raw
-	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Hostname() != source {
+	if raw == "" || err != nil {
 		return raw
 	}
-	if ports, limited := a.AliasPorts[target]; limited {
-		port := 80
-		if u.Scheme == "https" {
-			port = 443
+	// The stable hostname identifies the machine. An arbitrary private service URL
+	// never becomes a same-host URL merely because its IP shares a network prefix.
+	if target := a.homeTarget(requestHost); target != "" && strings.EqualFold(u.Hostname(), a.HomeHost) {
+		ports := a.DefaultPorts
+		limited := ports != nil
+		ip, _ := netip.ParseAddr(target)
+		best := -1
+		for network, allowed := range a.NetworkPorts {
+			prefix, err := netip.ParsePrefix(network)
+			if err == nil && prefix.Contains(ip) && prefix.Bits() > best {
+				ports, limited, best = allowed, true, prefix.Bits()
+			}
 		}
-		if u.Port() != "" {
-			port, _ = strconv.Atoi(u.Port())
-		}
-		if !slices.Contains(ports, port) {
+		if limited && !allowsURLPort(ports, u) {
 			return ""
 		}
+		return replaceAccessHost(u, a.HomeHost, target)
 	}
+	source, target := a.requestAlias(requestHost)
+	if target == "" || u.Hostname() != source {
+		return raw
+	}
+	if ports, limited := a.AliasPorts[target]; limited && !allowsURLPort(ports, u) {
+		return ""
+	}
+	return replaceAccessHost(u, source, target)
+}
+
+func allowsURLPort(ports []int, u *url.URL) bool {
+	port := 80
+	if u.Scheme == "https" {
+		port = 443
+	}
+	if u.Port() != "" {
+		port, _ = strconv.Atoi(u.Port())
+	}
+	return slices.Contains(ports, port)
+}
+
+func replaceAccessHost(u *url.URL, source, target string) string {
 	if port := u.Port(); port != "" {
 		u.Host = net.JoinHostPort(target, port)
 	} else if strings.Contains(target, ":") {
@@ -110,7 +222,7 @@ func (a AccessConfig) internalURL(raw, requestHost string) string {
 		key, value, ok := strings.Cut(part, "=")
 		name, keyErr := url.QueryUnescape(key)
 		host, valueErr := url.QueryUnescape(value)
-		if ok && keyErr == nil && valueErr == nil && name == "hostname" && host == source {
+		if ok && keyErr == nil && valueErr == nil && name == "hostname" && strings.EqualFold(host, source) {
 			parts[i] = key + "=" + url.QueryEscape(target)
 		}
 	}

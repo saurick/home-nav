@@ -34,9 +34,30 @@ func renderConfigYAML(cfg *Config) string {
 	line(&b, 0, "title: %s", yamlString(cfg.Title))
 	line(&b, 0, "subtitle: %s", yamlString(cfg.Subtitle))
 	line(&b, 0, "check_interval: %s", yamlString(durationString(cfg.CheckInterval)))
-	if len(cfg.Access.HostAliases) > 0 {
+	if cfg.Access.HomeHost != "" || len(cfg.Access.HostAliases) > 0 {
 		b.WriteString("\n")
 		line(&b, 0, "access:")
+		if cfg.Access.HomeHost != "" {
+			line(&b, 1, "home_host: %s", yamlString(cfg.Access.HomeHost))
+			if cfg.Access.DefaultPorts != nil {
+				ports, _ := json.Marshal(cfg.Access.DefaultPorts)
+				line(&b, 1, "default_ports: %s", ports)
+			}
+			if len(cfg.Access.NetworkPorts) > 0 {
+				line(&b, 1, "network_ports:")
+				networks := make([]string, 0, len(cfg.Access.NetworkPorts))
+				for network := range cfg.Access.NetworkPorts {
+					networks = append(networks, network)
+				}
+				sort.Strings(networks)
+				for _, network := range networks {
+					ports, _ := json.Marshal(append([]int{}, cfg.Access.NetworkPorts[network]...))
+					line(&b, 2, "%s: %s", yamlString(network), ports)
+				}
+			}
+		}
+	}
+	if len(cfg.Access.HostAliases) > 0 {
 		line(&b, 1, "host_aliases:")
 		hosts := make([]string, 0, len(cfg.Access.HostAliases))
 		for host := range cfg.Access.HostAliases {

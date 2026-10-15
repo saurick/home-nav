@@ -77,7 +77,7 @@
   const serviceID = target => target.closest('[data-service-id]')?.dataset.serviceId;
 
   function entryURL(item, type) {
-    return type === 'internal' ? item.internal_access_url : item[urlFields[type]];
+    return type === 'internal' && Object.hasOwn(item, 'internal_access_url') ? item.internal_access_url : item[urlFields[type]];
   }
   function preferredEntry(item, mode = accessMode) {
     const order = mode === 'internal' ? (navigation.default_access_mode === 'internal' ? ['internal', 'external', 'internal_domain'] : ['internal', 'internal_domain', 'external']) : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];

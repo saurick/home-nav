@@ -1109,6 +1109,15 @@ func findService(cfg *Config, id string) (int, int) {
 
 func cloneConfig(cfg *Config) *Config {
 	clone := *cfg
+	if cfg.Access.DefaultPorts != nil {
+		clone.Access.DefaultPorts = append([]int{}, cfg.Access.DefaultPorts...)
+	}
+	if cfg.Access.NetworkPorts != nil {
+		clone.Access.NetworkPorts = make(map[string][]int, len(cfg.Access.NetworkPorts))
+		for network, ports := range cfg.Access.NetworkPorts {
+			clone.Access.NetworkPorts[network] = append([]int{}, ports...)
+		}
+	}
 	if cfg.Access.HostAliases != nil {
 		clone.Access.HostAliases = make(map[string][]string, len(cfg.Access.HostAliases))
 		for host, aliases := range cfg.Access.HostAliases {

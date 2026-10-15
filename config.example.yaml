@@ -2,15 +2,15 @@ title: Home
 subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 
-# 同一服务器的 IP 别名；从别名访问导航时，内网 IP 链接使用当前别名。
-# 仅填写确认属于同一台主机的地址，不填写客户端 IP 或整段网段。
+# 用稳定域名标识与导航部署在同一台服务器的入口。
+# internal_url 使用这个域名时，内网访问会跟随浏览器当前打开导航的主机地址。
 access:
-  host_aliases:
-    "192.168.1.10": ["10.20.0.10", "100.80.0.10"]
-  # 按实际监听与访问验证填写；省略某个别名表示不限制端口，空列表表示均不可直连。
-  # alias_ports:
-  #   "10.20.0.10": [5001, 8080]
-  #   "100.80.0.10": [5001, 8080, 8090]
+  home_host: home-lan.example.test
+  # 省略 default_ports 表示不限端口；空列表表示都不可直连。
+  default_ports: [5001, 8080]
+  # 可按网络覆盖默认端口，最长前缀优先；具体 IP 变化不需要更新这里。
+  network_ports:
+    "100.64.0.0/10": [5001, 8080, 8090]
 
 auth:
   # 保持下面的示例账号、密码和 session_secret 时，首次打开会进入 /setup。
@@ -40,7 +40,7 @@ groups:
         pinned: false
         description: Docker Compose 管理入口，只提供跳转链接
         icon_text: D
-        internal_url: https://192.168.1.10:5001
+        internal_url: http://home-lan.example.test:5001
         internal_domain_url: https://dockge-lan.example.test
         external_url: https://dockge.example.com
         tags:
@@ -48,7 +48,7 @@ groups:
           - ops
         health:
           type: http
-          url: http://dockge.example.local
+          url: http://home-lan.example.test:5001
           expect_status: 200
           timeout: 2s
 

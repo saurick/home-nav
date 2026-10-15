@@ -81,6 +81,7 @@ cat /var/lib/home-nav-lan-cert-sync/last-result.json
 
 ```sh
 go test ./...
+node --test internal/server/web/access.test.cjs
 python3 -m pip install -r deploy/requirements.txt
 python3 -B -m unittest discover -s deploy -p 'test_*.py'
 ```
