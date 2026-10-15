@@ -80,11 +80,12 @@
     return type === 'internal' ? item.internal_access_url : item[urlFields[type]];
   }
   function preferredEntry(item, mode = accessMode) {
-    const order = mode === 'internal' ? ['internal', 'internal_domain', 'external'] : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
-    const type = order.find(candidate => item[urlFields[candidate]]);
-    return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode) };
+    const order = mode === 'internal' ? (navigation.default_access_mode === 'internal' ? ['internal', 'external', 'internal_domain'] : ['internal', 'internal_domain', 'external']) : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
+    const type = order.find(candidate => entryURL(item, candidate));
+    return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode), unavailable: Boolean(item[urlFields[mode]] && !entryURL(item, mode)) };
   }
   function entryHint(entry) {
+    if (entry.unavailable) return '当前网络无法直连' + modeLabels[accessMode] + '地址，' + (entry.type ? '使用' + modeLabels[entry.type] + '地址' : '请切换网络');
     return entry.fallback ? '未配置' + modeLabels[accessMode] + '地址，使用' + modeLabels[entry.type] + '地址' : modeLabels[entry.type] + '地址';
   }
   function openRedirectHref(url) { return '/open?url=' + encodeURIComponent(url); }
@@ -343,7 +344,7 @@
     $('.drag-handle', node).setAttribute('aria-label', '拖拽' + item.name + '，也可用方向键调整位置');
     $('.card-more', node).setAttribute('aria-label', item.name + '更多操作');
     const route = $('.entry-route', node);
-    route.textContent = (modeLabels[entry.type] || '未设置') + (entry.fallback ? '回退' : '');
+    route.textContent = (modeLabels[entry.type] || (entry.unavailable ? '当前网络不可用' : '未设置')) + (entry.fallback ? '回退' : '');
     route.classList.toggle('is-fallback', entry.fallback);
     route.setAttribute('aria-label', item.name + '，' + hint + '，查看详情');
     route.title = hint + '；查看入口与状态';
@@ -847,9 +848,10 @@
     const menu = $('#item-menu'); menu.replaceChildren();
     const title = document.createElement('p'); title.className = 'menu-heading'; title.textContent = item.name; menu.append(title);
     const missing = [];
+    const unavailable = [];
     for (const type of modes) {
       const url = entryURL(item, type);
-      if (!url) { missing.push(modeLabels[type]); continue; }
+      if (!url) { (item[urlFields[type]] ? unavailable : missing).push(modeLabels[type]); continue; }
       const row = document.createElement('div'); row.className = 'menu-entry';
       const label = document.createElement('span'); label.className = 'menu-entry-label'; label.textContent = modeLabels[type];
       const address = document.createElement('small'); address.textContent = new URL(url).host + new URL(url).pathname; address.title = url; label.append(address);
@@ -858,6 +860,7 @@
       row.append(label, open, copy); menu.append(row);
     }
     if (missing.length) { const note = document.createElement('p'); note.className = 'popover-note'; note.textContent = '未设置：' + missing.join('、'); menu.append(note); }
+    if (unavailable.length) { const note = document.createElement('p'); note.className = 'popover-note'; note.textContent = '当前网络无法直连：' + unavailable.join('、'); menu.append(note); }
     const divider = document.createElement('div'); divider.className = 'menu-separator'; menu.append(divider);
     menu.append(menuButton('pin', item.pinned ? '取消置顶' : '固定到常用入口', 'star-outline'), menuButton('edit', '编辑入口', 'pencil-box-outline'), menuButton('delete', '删除导航入口', 'trash-can-outline'));
     $('[data-action=delete]', menu).classList.add('menu-danger');
@@ -931,7 +934,7 @@
     const entry = preferredEntry(item); const status = statuses[item.id]; const disabled = item.health.type === 'disabled';
     $('#status-title').textContent = item.name;
     $('#status-entry').textContent = entryHint(entry);
-    $('#status-entry-url').textContent = entry.url || '未设置';
+    $('#status-entry-url').textContent = entry.url || (entry.unavailable ? '请切换网络后访问' : '未设置');
     $('#status-result').textContent = disabled ? '未监测' : statusUnavailable ? '暂时无法更新，保留最近记录' : statusLabels[status?.status || 'unknown'] || '等待探测';
     $('#status-target').textContent = disabled ? '未设置探测' : item.health.type === 'tcp' ? '端口连接：' + item.health.address : '网页响应：' + item.health.url;
     const time = status?.checked_at ? new Date(status.checked_at) : null;

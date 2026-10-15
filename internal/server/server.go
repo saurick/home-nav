@@ -1115,6 +1115,12 @@ func cloneConfig(cfg *Config) *Config {
 			clone.Access.HostAliases[host] = append([]string(nil), aliases...)
 		}
 	}
+	if cfg.Access.AliasPorts != nil {
+		clone.Access.AliasPorts = make(map[string][]int, len(cfg.Access.AliasPorts))
+		for host, ports := range cfg.Access.AliasPorts {
+			clone.Access.AliasPorts[host] = append([]int(nil), ports...)
+		}
+	}
 	clone.Groups = make([]Group, len(cfg.Groups))
 	for gi, group := range cfg.Groups {
 		clone.Groups[gi] = group

@@ -46,6 +46,18 @@ func renderConfigYAML(cfg *Config) string {
 		for _, host := range hosts {
 			line(&b, 2, "%s: [%s]", yamlString(host), quotedAliases(cfg.Access.HostAliases[host]))
 		}
+		if len(cfg.Access.AliasPorts) > 0 {
+			line(&b, 1, "alias_ports:")
+			hosts = hosts[:0]
+			for host := range cfg.Access.AliasPorts {
+				hosts = append(hosts, host)
+			}
+			sort.Strings(hosts)
+			for _, host := range hosts {
+				ports, _ := json.Marshal(append([]int{}, cfg.Access.AliasPorts[host]...))
+				line(&b, 2, "%s: %s", yamlString(host), ports)
+			}
+		}
 	}
 	if cfg.Auth.Enabled || cfg.Auth.Username != "" || cfg.Auth.Password != "" || cfg.Auth.SessionSecret != "" {
 		b.WriteString("\n")

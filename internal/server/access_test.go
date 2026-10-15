@@ -80,6 +80,60 @@ func TestAccessConfigValidationAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAliasPortsPreserveRestrictedServiceBoundaries(t *testing.T) {
+	access := testAccess()
+	access.AliasPorts = map[string][]int{"10.20.0.10": {80, 5001}, "100.80.0.10": {}}
+	for _, tt := range []struct{ host, input, want string }{
+		{"10.20.0.10", "http://192.168.1.10:5001/", "http://10.20.0.10:5001/"},
+		{"10.20.0.10", "http://192.168.1.10/", "http://10.20.0.10/"},
+		{"10.20.0.10", "https://192.168.1.10/", ""},
+		{"10.20.0.10", "http://192.168.1.10:8090/", ""},
+		{"100.80.0.10", "http://192.168.1.10:5001/", ""},
+		{"[fd7a:115c:a1e0::10]", "http://192.168.1.10:8090/", "http://[fd7a:115c:a1e0::10]:8090/"},
+		{"192.168.1.10", "http://192.168.1.10:8090/", "http://192.168.1.10:8090/"},
+		{"10.20.0.10", "http://192.168.1.20:8090/", "http://192.168.1.20:8090/"},
+	} {
+		if got := access.internalURL(tt.input, tt.host); got != tt.want {
+			t.Fatalf("host %s: got %q, want %q", tt.host, got, tt.want)
+		}
+	}
+	path := writeTempConfig(t, authTestConfig())
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Access = access
+	cfg.Groups[0].Services[0].InternalURL = "http://192.168.1.10:8090/"
+	cfg.Groups[0].Services[0].ExternalURL = "https://app.example.test/"
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reloaded.Access, access) {
+		t.Fatal("port restrictions lost on save")
+	}
+	copy := cloneConfig(cfg)
+	copy.Access.AliasPorts["10.20.0.10"][0] = 443
+	if cfg.Access.AliasPorts["10.20.0.10"][0] != 80 {
+		t.Fatal("clone altered live ports")
+	}
+	data := navigationState(reloaded, "10.20.0.10:3002")
+	item := data.Groups[0].Services[0]
+	if item.InternalAccessURL != "" || item.InternalURL == "" || item.ExternalURL == "" {
+		t.Fatal("blocked direct URL must retain source and external fallback")
+	}
+	for _, ports := range []map[string][]int{{"10.20.0.11": {80}}, {"10.20.0.10": {0}}, {"10.20.0.10": {65536}}, {"10.20.0.10": {80, 80}}} {
+		invalid := testAccess()
+		invalid.AliasPorts = ports
+		if err := invalid.validate(); err == nil {
+			t.Fatalf("invalid ports accepted: %v", ports)
+		}
+	}
+}
+
 func TestVPNNavigationKeepsConfiguredURLsAcrossEdits(t *testing.T) {
 	path := writeTempConfig(t, authTestConfig())
 	cfg, err := LoadConfig(path)

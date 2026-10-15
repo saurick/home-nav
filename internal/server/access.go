@@ -5,17 +5,24 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 )
 
 // HostAliases describes alternate IPs of the same host, never a subnet-wide rewrite.
 type AccessConfig struct {
 	HostAliases map[string][]string `yaml:"host_aliases,omitempty"`
+	AliasPorts  map[string][]int    `yaml:"alias_ports,omitempty"`
 }
 
 func (a AccessConfig) validate() error {
 	seen := make(map[string]bool)
+	aliasHosts := make(map[string]bool)
 	for source, aliases := range a.HostAliases {
+		for _, alias := range aliases {
+			aliasHosts[alias] = true
+		}
 		for _, host := range append([]string{source}, aliases...) {
 			ip, err := netip.ParseAddr(host)
 			if err != nil || ip.Zone() != "" || ip.String() != host || ip.IsUnspecified() || ip.IsMulticast() {
@@ -25,6 +32,18 @@ func (a AccessConfig) validate() error {
 				return fmt.Errorf("配置错误: access.host_aliases 地址 %q 重复", host)
 			}
 			seen[host] = true
+		}
+	}
+	for alias, ports := range a.AliasPorts {
+		if !aliasHosts[alias] {
+			return fmt.Errorf("配置错误: access.alias_ports 地址 %q 未在 host_aliases 中声明", alias)
+		}
+		seenPorts := make(map[int]bool)
+		for _, port := range ports {
+			if port < 1 || port > 65535 || seenPorts[port] {
+				return fmt.Errorf("配置错误: access.alias_ports 必须使用不重复的 1-65535 端口: %q", alias)
+			}
+			seenPorts[port] = true
 		}
 	}
 	return nil
@@ -64,6 +83,18 @@ func (a AccessConfig) internalURL(raw, requestHost string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() != source {
 		return raw
+	}
+	if ports, limited := a.AliasPorts[target]; limited {
+		port := 80
+		if u.Scheme == "https" {
+			port = 443
+		}
+		if u.Port() != "" {
+			port, _ = strconv.Atoi(u.Port())
+		}
+		if !slices.Contains(ports, port) {
+			return ""
+		}
 	}
 	if port := u.Port(); port != "" {
 		u.Host = net.JoinHostPort(target, port)
