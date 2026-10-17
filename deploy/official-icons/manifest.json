@@ -429,6 +429,16 @@
       "source_path": "/favicon.svg",
       "sha256": "0e0e6878ff92adab3c9b6c3956aa441c3d385a2ab80cab9effafe2088c60d5c4",
       "size": 461
+    },
+    {
+      "name": "webapp-template",
+      "file": "webapp-template.svg",
+      "source_url": "https://raw.githubusercontent.com/saurick/webapp-template/a7005777578c923b1909823310afbff74bd0461c/web/public/favicon.svg",
+      "source_page": "https://github.com/saurick/webapp-template/blob/a7005777578c923b1909823310afbff74bd0461c/web/public/favicon.svg",
+      "git_blob_sha": "2476b85c8e57264c28c2d55a1f15fbdb7306e5d8",
+      "sha256": "1aa3d30f16e5157e6774f3c631ddcaa5563a67035e0aaa171f90d4c07c315a06",
+      "size": 2175,
+      "service_name_pattern": "webapp-template"
     }
   ]
 }

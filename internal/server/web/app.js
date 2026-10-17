@@ -296,6 +296,39 @@
     return span;
   }
   const renderedIcons = new WeakMap();
+  function isMonochromeIcon(pixels) {
+    let visible = 0, transparent = 0, light = 0, dark = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] < 16) { transparent++; continue; }
+      if (pixels[i + 3] < 32) continue;
+      visible++;
+      const min = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+      const max = Math.max(pixels[i], pixels[i + 1], pixels[i + 2]);
+      if (min >= 220 && max - min <= 20) light++;
+      else if (max <= 40) dark++;
+      else return false;
+    }
+    // Only transparent, single-tone marks may change color; preserve artwork and opaque tiles.
+    return visible >= 4 && transparent >= pixels.length / 4 * 0.05 && (light === visible || dark === visible);
+  }
+  const monochromeIcons = new Map();
+  function adaptIcon(image) {
+    if (!image?.complete || !image.naturalWidth || image.dataset.iconTone) return;
+    image.dataset.iconTone = 'original';
+    const src = image.currentSrc || image.src;
+    if (new URL(src, location.href).origin !== location.origin) return;
+    try {
+      if (!monochromeIcons.has(src)) {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 32;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) return;
+        context.drawImage(image, 0, 0, 32, 32);
+        monochromeIcons.set(src, isMonochromeIcon(context.getImageData(0, 0, 32, 32).data));
+      }
+      if (monochromeIcons.get(src)) image.dataset.iconTone = 'monochrome';
+    } catch { /* Unreadable image pixels keep the original artwork. */ }
+  }
   function renderIcon(container, item) {
     const previous = renderedIcons.get(container);
     renderedIcons.set(container, item);
@@ -306,7 +339,11 @@
     image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.width = 42; image.height = 42; image.src = src;
     image.addEventListener('error', () => { if (image.parentNode === container) container.replaceChildren(fallback(renderedIcons.get(container))); });
     container.replaceChildren(image);
+    adaptIcon(image);
   }
+  document.addEventListener('load', event => {
+    if (event.target instanceof HTMLImageElement && event.target.closest('.icon-button')) adaptIcon(event.target);
+  }, true);
   document.addEventListener('error', event => {
     const image = event.target;
     if (!(image instanceof HTMLImageElement)) return;
@@ -339,6 +376,7 @@
     if (node.dataset.iconValue !== (item.icon || '') || node.dataset.iconText !== (item.icon_text || '') || (!item.icon || $('.icon-fallback', launcher)) && node.dataset.iconName !== item.name || !launcher.firstChild) renderIcon(launcher, item);
     const existingImage = $('img', launcher);
     if (existingImage?.complete && !existingImage.naturalWidth) launcher.replaceChildren(fallback(item));
+    else adaptIcon(existingImage);
     node.dataset.iconValue = item.icon || '';
     node.dataset.iconText = item.icon_text || ''; node.dataset.iconName = item.name;
     for (const link of [launcher, name]) { link.href = entry.url || '#'; link.title = item.name + '；' + hint; link.setAttribute('aria-label', (editMode ? '编辑' : '打开') + item.name + '，' + hint); }

@@ -56,7 +56,7 @@ cat /var/lib/home-nav-lan-cert-sync/last-result.json
 
 ## 本地品牌图标
 
-`official-icons/manifest.json` 记录固定图标文件、SHA-256、服务名匹配规则与来源。资源以项目仓库或官网发布版本为主；GitLab 使用发行版内置图标，部分官网拒绝直连时使用其公开 favicon 缓存，来源差异记录在各项 `source_note`。ERP 使用应用自己发布的 favicon。图标用于识别相应服务，商标与图形版权属于各自所有者；保留原配色和比例。
+`official-icons/manifest.json` 记录固定图标文件、SHA-256、服务名匹配规则与来源。资源以项目仓库或官网发布版本为主；GitLab 使用发行版内置图标，部分官网拒绝直连时使用其公开 favicon 缓存，来源差异记录在各项 `source_note`。ERP 和 webapp-template 使用各自项目发布的 favicon。图标用于识别相应服务，商标与图形版权属于各自所有者；彩色图标保留原配色和比例，透明纯黑或纯白标志在页面中随明暗模式调整对比度。
 
 复用现有 uploads 挂载，无需增加图标代理或构建应用镜像。安装脚本只修改匹配入口的 `icon` 标量；未知名称保持现状。自建入口名称无法识别产品时，使用不提交到仓库的 JSON `--service-map` 将入口 ID 映射到图标目录中的 `name`。资源文件名包含内容摘要，避免浏览器沿用旧缓存。Python 依赖见 [requirements.txt](requirements.txt)，可在独立虚拟环境安装。
 

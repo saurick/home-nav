@@ -107,7 +107,9 @@ input[type="search"]::-webkit-search-cancel-button { display: none; }
 .icon-button { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 10px; background: transparent; color: var(--text); }
 .app-icon .icon-button::after { content: ""; position: absolute; inset: 0; border-radius: 10px; }
 .icon-button .inline-icon { font-size: 38px; }
-.icon-button img { width: 42px; height: 42px; object-fit: contain; border-radius: 6px; background: var(--image-surface); }
+.icon-button img { width: 42px; height: 42px; object-fit: contain; border-radius: 6px; }
+.icon-button img[data-icon-tone="monochrome"] { filter: brightness(0) invert(1); }
+:root[data-theme="light"] .icon-button img[data-icon-tone="monochrome"] { filter: brightness(0); }
 .icon-fallback { max-width: 52px; overflow: hidden; font-size: 20px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .app-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; width: 100%; height: 40px; overflow: hidden; overflow-wrap: anywhere; text-align: center; font-size: 14px; font-weight: 500; line-height: 20px; }
 .app-icon .app-name { position: relative; z-index: 1; }
