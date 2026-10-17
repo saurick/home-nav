@@ -28,7 +28,7 @@ test('system mode resolves both ways while explicit modes remain explicit', () =
   assert.equal(theme.resolvedMode('dark', false), 'dark');
 });
 
-test('default backgrounds inherit the current palette while custom backgrounds stay explicit', () => {
+test('default backgrounds inherit light or dark mode while custom backgrounds stay explicit', () => {
   for (const background_color of [undefined, '', '#000', '#000000']) {
     assert.equal(theme.backgroundColor({ background_color }), 'var(--page)');
   }

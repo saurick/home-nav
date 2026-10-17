@@ -4,19 +4,20 @@
   accent-color: var(--primary);
   caret-color: var(--accent);
   --page: #000000;
-  --text: color-mix(in srgb, var(--primary) 6%, #f0f0f0);
-  --muted: color-mix(in srgb, var(--primary) 10%, #b3b3b3);
-  --subtle: color-mix(in srgb, var(--primary) 10%, #a6a6a6);
-  --surface: color-mix(in srgb, var(--primary) 5%, #1b1b1b);
-  --surface-raised: color-mix(in srgb, var(--primary) 6%, #242424);
-  --surface-soft: color-mix(in srgb, var(--primary) 6%, #252525);
-  --control: color-mix(in srgb, var(--primary) 8%, #2a2a2a);
-  --input: color-mix(in srgb, var(--primary) 4%, #141414);
-  --hover: color-mix(in srgb, var(--primary) 12%, #373737);
-  --card-hover: color-mix(in srgb, var(--primary) 8%, #222222);
-  --line: color-mix(in srgb, var(--primary) 10%, #343434);
-  --line-strong: color-mix(in srgb, var(--primary) 12%, #606060);
-  --placeholder: color-mix(in srgb, var(--primary) 10%, #b5b5b5);
+  /* Base surfaces stay neutral; accent colors are reserved for emphasis. */
+  --text: #f0f0f0;
+  --muted: #b3b3b3;
+  --subtle: #a6a6a6;
+  --surface: #1b1b1b;
+  --surface-raised: #242424;
+  --surface-soft: #252525;
+  --control: #2a2a2a;
+  --input: #141414;
+  --hover: #373737;
+  --card-hover: #222222;
+  --line: #343434;
+  --line-strong: #606060;
+  --placeholder: #b5b5b5;
   --accent: #75b9ff;
   --primary: #75b9ff;
   --primary-hover: color-mix(in srgb, var(--primary) 85%, #ffffff);
@@ -27,8 +28,7 @@
   --success: #70dfa1;
   --warning: #f5d287;
   --popover: var(--surface-raised);
-  --shade: color-mix(in srgb, var(--primary) 8%, #101010);
-  --backdrop: color-mix(in srgb, var(--shade) 74%, transparent);
+  --backdrop: rgb(0 0 0 / 60%);
   --shadow: #0008;
   --heading-surface: var(--page);
   --accent-soft: color-mix(in srgb, var(--primary) 10%, var(--surface));
@@ -39,28 +39,27 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --page: color-mix(in srgb, var(--primary) 4%, #f5f5f5);
-  --text: color-mix(in srgb, var(--primary) 12%, #242424);
-  --muted: color-mix(in srgb, var(--primary) 12%, #555555);
-  --subtle: color-mix(in srgb, var(--primary) 10%, #666666);
+  --page: #f5f5f5;
+  --text: #242424;
+  --muted: #555555;
+  --subtle: #666666;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-soft: color-mix(in srgb, var(--primary) 2%, #f7f7f7);
-  --control: color-mix(in srgb, var(--primary) 4%, #f4f4f4);
+  --surface-soft: #f7f7f7;
+  --control: #f4f4f4;
   --input: #ffffff;
-  --hover: color-mix(in srgb, var(--primary) 8%, #f0f0f0);
-  --card-hover: color-mix(in srgb, var(--primary) 2%, #ffffff);
-  --line: color-mix(in srgb, var(--primary) 8%, #dedede);
-  --line-strong: color-mix(in srgb, var(--primary) 15%, #b2b2b2);
-  --placeholder: color-mix(in srgb, var(--primary) 10%, #6c6c6c);
+  --hover: #f0f0f0;
+  --card-hover: #ffffff;
+  --line: #dedede;
+  --line-strong: #b2b2b2;
+  --placeholder: #6c6c6c;
   --danger: #b62c3f;
   --danger-hover: color-mix(in srgb, var(--danger) 85%, #000000);
   --on-danger: #ffffff;
   --success: #16834f;
   --warning: #805b00;
   --popover: #ffffff;
-  --backdrop: color-mix(in srgb, var(--shade) 40%, transparent);
-  --shadow: color-mix(in srgb, var(--shade) 15%, transparent);
+  --shadow: rgb(0 0 0 / 15%);
 }
 button, input, textarea, select { font: inherit; }
 ::selection { color: var(--on-accent); background: var(--primary); }
