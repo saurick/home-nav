@@ -99,7 +99,7 @@ func TestIndexIncludesAccessModeMenu(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"id=\"access-mode-button\"", "aria-haspopup=\"menu\"", "role=\"menuitemradio\"", "data-access-mode=\"internal\"", "data-access-mode=\"internal_domain\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "内网 IP 优先", "内网域名优先", `rel="noopener noreferrer"`, `id="copy-dialog"`, `id="manual-copy"`} {
+	for _, want := range []string{"id=\"access-mode-button\"", "aria-haspopup=\"menu\"", "role=\"menuitemradio\"", "data-access-mode=\"internal\"", "data-access-mode=\"internal_domain\"", "data-internal-url=", "data-internal-domain-url=", "data-external-url=", "内网直连优先", "内网域名优先", `rel="noopener noreferrer"`, `id="copy-dialog"`, `id="manual-copy"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected index to contain %q", want)
 		}
@@ -109,7 +109,7 @@ func TestIndexIncludesAccessModeMenu(t *testing.T) {
 	}
 }
 
-func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
+func TestIndexRendersCompactBrandHeading(t *testing.T) {
 	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -126,8 +126,8 @@ func TestIndexDoesNotRenderVisibleTitle(t *testing.T) {
 	if !strings.Contains(body, "<title>Home</title>") {
 		t.Fatal("index should keep the configured browser title")
 	}
-	if strings.Contains(body, "<h1>Home</h1>") {
-		t.Fatal("index should not render the configured title as visible heading")
+	if !strings.Contains(body, `<div class="page-heading">`) || !strings.Contains(body, "<h1>Home</h1>") {
+		t.Fatal("index should render the configured title in the compact brand heading")
 	}
 }
 

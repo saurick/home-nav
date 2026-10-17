@@ -52,3 +52,31 @@ test('unsaved editor values use the stable hostname for health target selection'
   assert.equal(selected.type, 'internal');
   assert.equal(selected.unavailable, false);
 });
+
+test('external-only services stay quiet while a restricted direct entry is emphasized', () => {
+  const ctx = context();
+  const publicSite = ctx.preferredEntry({ internal_url: '', internal_access_url: '', external_url: 'https://example.test/' });
+  assert.equal(publicSite.type, 'external');
+  assert.equal(publicSite.fallback, true);
+  assert.equal(publicSite.warning, false);
+  const restricted = ctx.preferredEntry({ ...service, internal_access_url: '' });
+  assert.equal(restricted.warning, true);
+  const empty = ctx.preferredEntry({ internal_url: '', internal_access_url: '', external_url: '', internal_domain_url: '' });
+  assert.equal(empty.type, '');
+  assert.equal(empty.warning, true);
+});
+
+test('pin updates keep source URLs without resubmitting derived ownership', () => {
+  const ctx = {};
+  vm.runInNewContext(app.slice(app.indexOf('  function payloadFor('), app.indexOf('  async function togglePin(')), ctx);
+  const original = { ...service, id: 'app', internal_access_url: 'http://10.55.1.2:5001/', same_host: true, health: { type: 'disabled' }, tags: ['ops'] };
+  const payload = ctx.payloadFor(original);
+  assert.equal(payload.internal_url, service.internal_url);
+  assert.equal(Object.hasOwn(payload, 'id'), false);
+  assert.equal(Object.hasOwn(payload, 'internal_access_url'), false);
+  assert.equal(Object.hasOwn(payload, 'same_host'), false);
+  payload.health.type = 'http';
+  payload.tags.push('other');
+  assert.equal(original.health.type, 'disabled');
+  assert.equal(original.tags.length, 1);
+});

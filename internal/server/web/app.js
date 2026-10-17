@@ -21,13 +21,12 @@
   const setting = name => settingsForm.elements.namedItem(name);
   const groupField = name => groupForm.elements.namedItem(name);
   const modes = ['external', 'internal', 'internal_domain'];
-  const modeLabels = { external: '外网', internal: '内网 IP', internal_domain: '内网域名' };
+  const modeLabels = { external: '外网', internal: '内网直连', internal_domain: '内网域名' };
   const urlFields = { external: 'external_url', internal: 'internal_url', internal_domain: 'internal_domain_url' };
   const cards = new Map($$('.app-icon', groupsRoot).map(node => [node.dataset.serviceId, node]));
   const groupNodes = new Map($$('.group[data-group-id]', groupsRoot).map(node => [node.dataset.groupId, node]));
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let editMode = false;
-  let previousSearch = '';
   let selection = 0;
   let statusServiceID = '';
   let statuses = {};
@@ -82,10 +81,12 @@
   function preferredEntry(item, mode = accessMode) {
     const order = mode === 'internal' ? (navigation.default_access_mode === 'internal' ? ['internal', 'external', 'internal_domain'] : ['internal', 'internal_domain', 'external']) : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
     const type = order.find(candidate => entryURL(item, candidate));
-    return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode), unavailable: Boolean(item[urlFields[mode]] && !entryURL(item, mode)) };
+    const unavailable = Boolean(item[urlFields[mode]] && !entryURL(item, mode));
+    return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode), unavailable, warning: unavailable || !type };
   }
   function entryHint(entry) {
-    if (entry.unavailable) return '当前网络无法直连' + modeLabels[accessMode] + '地址，' + (entry.type ? '使用' + modeLabels[entry.type] + '地址' : '请切换网络');
+    if (!entry.type) return '暂无可用入口，请切换访问方式或补充地址';
+    if (entry.unavailable) return '当前网络未启用' + modeLabels[accessMode] + '，使用' + modeLabels[entry.type] + '备用入口';
     return entry.fallback ? '未配置' + modeLabels[accessMode] + '地址，使用' + modeLabels[entry.type] + '地址' : modeLabels[entry.type] + '地址';
   }
   function openRedirectHref(url) { return '/open?url=' + encodeURIComponent(url); }
@@ -331,7 +332,7 @@
     if (existingImage?.complete && !existingImage.naturalWidth) launcher.replaceChildren(fallback(item));
     node.dataset.iconValue = item.icon || '';
     node.dataset.iconText = item.icon_text || ''; node.dataset.iconName = item.name;
-    for (const link of [launcher, name]) { link.href = entry.url || '#'; link.title = item.name + '；' + hint; link.setAttribute('aria-label', item.name + '，' + hint); }
+    for (const link of [launcher, name]) { link.href = entry.url || '#'; link.title = item.name + '；' + hint; link.setAttribute('aria-label', (editMode ? '编辑' : '打开') + item.name + '，' + hint); }
     launcher.id = 'entry-' + item.id;
     highlight(name, item.name, terms);
     const matchingTags = (item.tags || []).filter(tag => terms.some(term => tag.toLocaleLowerCase().includes(term)));
@@ -340,12 +341,12 @@
     highlight(tags, matchingTags.join(' · '), terms);
     const pin = $('.pin-button', node);
     pin.setAttribute('aria-pressed', String(Boolean(item.pinned))); pin.setAttribute('aria-label', (item.pinned ? '取消置顶' : '置顶') + item.name);
-    $('.drag-handle', node).hidden = !editMode;
+    $('.drag-handle', node).hidden = !editMode || Boolean(search.value.trim());
     $('.drag-handle', node).setAttribute('aria-label', '拖拽' + item.name + '，也可用方向键调整位置');
     $('.card-more', node).setAttribute('aria-label', item.name + '更多操作');
     const route = $('.entry-route', node);
-    route.textContent = (modeLabels[entry.type] || (entry.unavailable ? '当前网络不可用' : '未设置')) + (entry.fallback ? '回退' : '');
-    route.classList.toggle('is-fallback', entry.fallback);
+    $('.entry-text', route).textContent = (modeLabels[entry.type] || '暂无入口') + (entry.warning && entry.fallback ? '回退' : '');
+    route.classList.toggle('is-fallback', entry.warning);
     route.setAttribute('aria-label', item.name + '，' + hint + '，查看详情');
     route.title = hint + '；查看入口与状态';
     renderCardStatus(item, node);
@@ -356,6 +357,8 @@
     const pendingOrder = editMode && (sortDirty || sortSaving) ? sortPayload() : null;
     closePopovers();
     document.body.dataset.density = preferences.density;
+    $('#navigation-host').textContent = '当前导航：' + window.location.host;
+    $('.edit-hint').textContent = search.value.trim() ? '搜索时可编辑入口；清空搜索后可拖拽排序' : '点击编辑入口，使用拖拽把手调整位置';
     $('#density-button > span:last-child').textContent = '显示密度：' + (preferences.density === 'compact' ? '紧凑' : '舒适');
     const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     const all = allServices();
@@ -379,7 +382,7 @@
       for (const child of [...grid.children]) if (!shownIDs.has(child.dataset.serviceId)) child.remove();
       for (const entry of shown) grid.append(cards.get(entry.id));
       const count = shown.filter(entry => matched.has(entry.id)).length;
-      $('.group-count', node).textContent = terms.length ? count + ' / ' + shown.length : shown.length + ' 个入口';
+      $('.group-count', node).textContent = terms.length ? count + ' / ' + shown.length : String(shown.length);
       node.hidden = terms.length ? count === 0 : !editMode && shown.length === 0 && item.services.length > 0;
       for (const button of $$('[data-group-id], [data-action=add-service], [data-action=collapse-group]', node)) button.dataset.groupId = item.id;
       const collapse = $('.collapse-button', node);
@@ -395,7 +398,7 @@
     pinnedGrid.replaceChildren(...pinned.map(item => cards.get(item.id)));
     const pinnedCount = pinned.filter(item => matched.has(item.id)).length;
     pinnedGroup.hidden = editMode || (terms.length ? pinnedCount === 0 : pinned.length === 0);
-    $('.group-count', pinnedGroup).textContent = terms.length ? pinnedCount + ' / ' + pinned.length : pinned.length + ' 个入口';
+    $('.group-count', pinnedGroup).textContent = terms.length ? pinnedCount + ' / ' + pinned.length : String(pinned.length);
     const collapsedPinned = !terms.length && preferences.collapsed.includes(pinnedGroupID);
     pinnedGrid.hidden = collapsedPinned;
     $('.collapse-button', pinnedGroup).setAttribute('aria-expanded', String(!collapsedPinned));
@@ -409,7 +412,7 @@
     const jumpGroups = navigation.groups.filter(item => editMode || !item.services.length || item.services.some(entry => !entry.pinned));
     const jumpOptions = jumpGroups.map(item => new Option(item.name, item.id));
     if (pinned.length && !editMode) jumpOptions.unshift(new Option('常用入口', pinnedGroupID));
-    $('#group-jump-control').hidden = jumpOptions.length < 3;
+    $('#group-jump-control').hidden = jumpOptions.length < 2;
     const jump = $('#group-jump');
     jump.replaceChildren(new Option('选择分组', ''), ...jumpOptions);
     updateAccessMode();
@@ -429,7 +432,7 @@
       $('.icon-button', visible[selection]).setAttribute('aria-current', 'true');
       search.setAttribute('aria-activedescendant', $('.icon-button', visible[selection]).id);
     } else search.removeAttribute('aria-activedescendant');
-    $('#search-summary').textContent = search.value.trim() ? '找到 ' + visible.length + ' 个入口' + (visible.length ? ' · ↑↓选择，Enter 打开' : '') : '';
+    $('#search-summary').textContent = search.value.trim() ? '找到 ' + visible.length + ' 个入口' + (visible.length ? ' · ↑↓选择，Enter ' + (editMode ? '编辑' : '打开') : '') : allServices().length + ' 个入口 · ' + navigation.groups.length + ' 个分组';
   }
   search.addEventListener('input', () => { selection = 0; renderNavigation(); });
   function clearSearch() { search.value = ''; selection = 0; renderNavigation(); search.focus({ preventScroll: true }); }
@@ -440,7 +443,7 @@
     if (event.key === 'Escape') { event.preventDefault(); return clearSearch(); }
     if (event.key === 'Enter') {
       const selected = visibleCards()[selection];
-      if (selected && search.value.trim()) { event.preventDefault(); openEntryURL(preferredEntry(service(selected.dataset.serviceId)).url); }
+      if (selected && search.value.trim()) { event.preventDefault(); editMode ? openService(selected.dataset.serviceId) : openEntryURL(preferredEntry(service(selected.dataset.serviceId)).url); }
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       const visible = visibleCards();
@@ -450,7 +453,7 @@
     }
   });
   document.addEventListener('keydown', event => {
-    if (event.isComposing || $$('dialog[open]').length || editMode) return;
+    if (event.isComposing || $$('dialog[open]').length) return;
     const editable = event.target.closest('input, textarea, select, [contenteditable]');
     if (((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') || (event.key === '/' && !editable && !event.metaKey && !event.ctrlKey && !event.altKey)) { event.preventDefault(); search.focus(); }
   });
@@ -562,6 +565,54 @@
     renderIcon(image, { name: field('name').value, icon: field('icon').value, icon_text: field('icon_text').value });
     name.textContent = field('name').value || '入口名称';
   }
+  let accessPreviewTimer;
+  let accessPreviewRevision = 0;
+  let originalInternalURL = '';
+  function accessDraft() {
+    return { internal_url: field('internal_url').value.trim(), internal_domain_url: field('internal_domain_url').value.trim(), external_url: field('external_url').value.trim(), same_host: field('same_host').checked };
+  }
+  function queueAccessPreview(canonicalize = false) {
+    const revision = ++accessPreviewRevision;
+    clearTimeout(accessPreviewTimer);
+    const draft = accessDraft();
+    const panel = $('#address-preview');
+    const label = $('#address-preview-label');
+    const output = $('#address-preview-url');
+    const note = $('#address-preview-note');
+    label.textContent = '当前会打开的地址';
+    panel.classList.remove('is-fallback');
+    if (!draft.internal_url && !draft.internal_domain_url && !draft.external_url) {
+      panel.setAttribute('aria-busy', 'false'); output.textContent = '填写地址后可预览'; note.textContent = ''; return;
+    }
+    panel.setAttribute('aria-busy', 'true'); output.textContent = '正在计算…'; note.textContent = '';
+    accessPreviewTimer = setTimeout(async () => {
+      try {
+        const preview = await request('/api/navigation/preview', { method: 'POST', body: draft });
+        if (revision !== accessPreviewRevision || !editDialog.open) return;
+        if (canonicalize && preview.same_host && JSON.stringify(accessDraft()) === JSON.stringify(draft)) field('internal_url').value = preview.internal_url;
+        const selected = preferredEntry(preview);
+        label.textContent = selected.type ? '当前会打开 · ' + modeLabels[selected.type] + (selected.warning && selected.fallback ? '回退' : '') : '当前会打开的地址';
+        output.textContent = selected.url || '暂无可用入口';
+        note.textContent = selected.fallback || !selected.type ? entryHint(selected) : preview.same_host ? '保存稳定主机名，访问时随导航地址变化。' : '使用该服务自己的地址。';
+        panel.classList.toggle('is-fallback', selected.warning);
+      } catch (error) {
+        if (revision !== accessPreviewRevision || !editDialog.open) return;
+        output.textContent = '暂时无法预览'; note.textContent = errorText(error, '请检查地址，或稍后重试。');
+      } finally { if (revision === accessPreviewRevision) panel.setAttribute('aria-busy', 'false'); }
+    }, canonicalize ? 0 : 180);
+  }
+  editDialog.addEventListener('close', () => { accessPreviewRevision++; clearTimeout(accessPreviewTimer); });
+  field('same_host').addEventListener('change', () => {
+    if (field('same_host').checked) {
+      originalInternalURL = field('internal_url').value;
+      queueAccessPreview(true);
+    } else {
+      let host = '';
+      try { host = new URL(originalInternalURL).hostname; } catch (_) {}
+      field('internal_url').value = host && host !== navigation.home_host ? originalInternalURL : '';
+      queueAccessPreview();
+    }
+  });
   async function openService(id = '', groupID = '') {
     if ((sortDirty || sortSaving) && !(await saveSort())) return showToast('请先保存或放弃未完成的排序。', true);
     const item = service(id);
@@ -571,9 +622,12 @@
     field('group_id').replaceChildren(...navigation.groups.map(item => new Option(item.name, item.id)));
     for (const [key, value] of Object.entries(values)) field(key).value = value;
     field('pinned').checked = Boolean(item?.pinned);
-    const primary = item ? preferredEntry(item).type || accessMode : accessMode;
-    $('#primary-address').replaceChildren(addressFields.get(primary));
-    $('#secondary-addresses').replaceChildren(...modes.filter(mode => mode !== primary).map(mode => addressFields.get(mode)));
+    field('same_host').checked = Boolean(item?.same_host);
+    field('same_host').disabled = !navigation.home_host;
+    $('#same-host-help').textContent = navigation.home_host ? '直连地址随导航变化；独立设备使用自己的地址。' : '尚未启用同机跟随，可填写服务自身地址。';
+    originalInternalURL = values.internal_url;
+    $('#primary-address').replaceChildren(addressFields.get('internal'));
+    $('#secondary-addresses').replaceChildren(...['internal_domain', 'external'].map(mode => addressFields.get(mode)));
     for (const details of $$('details', editForm)) details.open = false;
     updateHealthFields(); refreshPreview();
     $('#edit-title').textContent = item ? '编辑入口' : '新增入口';
@@ -581,6 +635,7 @@
     $('#delete-service-button').hidden = !item;
     rememberForm(editForm);
     openDialog(editDialog, field('name'));
+    queueAccessPreview();
   }
   function webURL(value) {
     try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch (_) { return false; }
@@ -607,20 +662,35 @@
     for (const name of ['name', 'description', 'icon_text', 'icon', 'external_url', 'internal_url', 'internal_domain_url', 'group_id', 'notes']) result[name] = field(name).value.trim();
     result.tags = field('tags').value.split(/[,，]/).map(value => value.trim()).filter(Boolean);
     result.pinned = field('pinned').checked;
+    result.same_host = field('same_host').checked;
     result.health = { type, url: type === 'http' ? field('health_url').value.trim() : '', address: type === 'tcp' ? field('health_address').value.trim() : '', expect_status: type === 'http' ? Number(field('health_expect_status').value || 200) : 0, timeout: type === 'disabled' ? '2s' : field('health_timeout').value.trim() || '2s' };
     return result;
   }
   let previewFrame;
   editForm.addEventListener('input', event => {
+    if (Object.values(urlFields).includes(event.target.name)) {
+      if (event.target.name === 'internal_url') {
+        let host = '';
+        try { host = new URL(event.target.value).hostname; } catch (_) {}
+        field('same_host').checked = Boolean(navigation.home_host && host === navigation.home_host);
+      }
+      queueAccessPreview();
+    }
     if (!['name', 'icon', 'icon_text'].includes(event.target.name)) return;
     cancelAnimationFrame(previewFrame);
     previewFrame = requestAnimationFrame(refreshPreview);
   });
   field('health_type').addEventListener('change', () => updateHealthFields(true));
-  $('#use-entry-for-health').addEventListener('click', () => {
-    const entry = preferredEntry(servicePayload());
-    if (!entry.url) return setFieldError(editForm, urlFields[accessMode], '请先填写一个访问地址。');
-    field('health_url').value = entry.url;
+  $('#use-entry-for-health').addEventListener('click', async () => {
+    const revision = accessPreviewRevision;
+    const draft = accessDraft();
+    try {
+      const preview = await request('/api/navigation/preview', { method: 'POST', body: draft });
+      if (!editDialog.open || revision !== accessPreviewRevision || field('health_type').value !== 'http') return;
+      const entry = preferredEntry(preview);
+      if (!entry.url) return setFieldError(editForm, urlFields[accessMode], '请先填写一个访问地址。');
+      field('health_url').value = entry.type === 'internal' ? preview.internal_url : entry.url;
+    } catch (error) { if (editDialog.open && revision === accessPreviewRevision) formError(editForm, error); }
   });
   editForm.addEventListener('submit', event => {
     event.preventDefault(); clearErrors(editForm);
@@ -636,6 +706,7 @@
 
   function appearanceStyle(target, appearance, fixed = false) {
     target.style.backgroundColor = appearance.background_color || '#000000';
+    target.style.setProperty('--heading-surface', appearance.background_image ? 'rgba(14,20,29,.94)' : appearance.background_color || '#000000');
     const alpha = { low: .18, medium: .30, high: .42 }[appearance.background_overlay] || .30;
     target.style.backgroundImage = appearance.background_image ? 'linear-gradient(rgba(0,0,0,' + alpha + '),rgba(0,0,0,' + alpha + ')),url(' + JSON.stringify(appearance.background_image) + ')' : '';
     target.style.backgroundSize = appearance.background_image ? 'cover' : '';
@@ -816,6 +887,7 @@
     const payload = { ...item, health: { ...item.health }, tags: [...(item.tags || [])] };
     delete payload.id;
     delete payload.internal_access_url;
+    delete payload.same_host;
     return payload;
   }
   async function togglePin(id, button) {
@@ -912,6 +984,7 @@
     dot.dataset.status = statusUnavailable ? 'unknown' : result;
     const hint = statusUnavailable ? '状态暂时无法更新，可查看最近记录' : (statusLabels[result] || '等待探测');
     dot.title = hint; dot.setAttribute('aria-label', item.name + '，' + hint + '，查看详情');
+    $('.entry-route', node).setAttribute('aria-label', item.name + '，' + entryHint(preferredEntry(item)) + (item.health.type === 'disabled' ? '' : '，后台' + hint) + '，查看详情');
   }
   async function refreshStatus() {
     if (statusLoading || document.hidden) return;
@@ -1172,10 +1245,7 @@
     if (!value && (sortDirty || sortSaving) && !(await saveSort())) return;
     closePopovers();
     editMode = value;
-    if (value) { previousSearch = search.value; search.value = ''; }
-    else { search.value = previousSearch; selection = 0; }
-    search.disabled = value;
-    search.placeholder = value ? '完成编辑后可搜索' : '搜索名称或标签';
+    selection = 0;
     document.body.classList.toggle('is-edit-mode', value);
     $('#edit-bar').hidden = !value;
     $('#edit-mode-button').setAttribute('aria-pressed', String(value));
@@ -1295,7 +1365,7 @@
   }
   groupsRoot.addEventListener('pointerdown', event => {
     const handle = event.target.closest('.drag-handle');
-    if (!handle || !editMode || event.button !== 0 || dragState) return;
+    if (!handle || !editMode || search.value.trim() || event.button !== 0 || dragState) return;
     dragState = { item: handle.closest('.app-icon'), handle, pointerID: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, active: false, frame: 0, order: sortPayload() };
     handle.setPointerCapture(event.pointerId);
   });
@@ -1312,7 +1382,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden && dragState) finishDrag(true); });
   groupsRoot.addEventListener('keydown', event => {
     const handle = event.target.closest('.drag-handle');
-    if (!handle || !editMode || dragState || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    if (!handle || !editMode || search.value.trim() || dragState || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
     const item = handle.closest('.app-icon'); const grid = item.parentElement;
     const grids = navigation.groups.map(entry => $('.icon-grid', groupNodes.get(entry.id)));

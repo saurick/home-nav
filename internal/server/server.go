@@ -64,6 +64,7 @@ type ServiceUpdateRequest struct {
 	InternalURL       string                     `json:"internal_url"`
 	InternalDomainURL string                     `json:"internal_domain_url"`
 	ExternalURL       string                     `json:"external_url"`
+	SameHost          bool                       `json:"same_host,omitempty"`
 	Tags              []string                   `json:"tags"`
 	Notes             string                     `json:"notes"`
 	GroupID           string                     `json:"group_id"`
@@ -159,6 +160,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/open", s.handleOpen)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/navigation", s.handleNavigation)
+	s.mux.HandleFunc("/api/navigation/preview", s.handleAccessPreview)
 	s.mux.HandleFunc("/assets/app.css", handleUIAsset)
 	s.mux.HandleFunc("/assets/app.js", handleUIAsset)
 	s.mux.HandleFunc("/api/groups/sort", s.handleGroupSort)
@@ -824,6 +826,10 @@ func (s *Server) createService(payload ServiceUpdateRequest) (*Config, Service, 
 	s.mu.RLock()
 	cfg := cloneConfig(s.cfg)
 	s.mu.RUnlock()
+	internalURL, err := cfg.Access.canonicalInternalURL(payload.InternalURL, payload.SameHost)
+	if err != nil {
+		return nil, Service{}, err
+	}
 
 	targetGroup := -1
 	if payload.GroupID != "" {
@@ -850,7 +856,7 @@ func (s *Server) createService(payload ServiceUpdateRequest) (*Config, Service, 
 		Description:       payload.Description,
 		IconText:          payload.IconText,
 		Icon:              payload.Icon,
-		InternalURL:       payload.InternalURL,
+		InternalURL:       internalURL,
 		InternalDomainURL: payload.InternalDomainURL,
 		ExternalURL:       payload.ExternalURL,
 		Tags:              payload.Tags,
@@ -896,13 +902,17 @@ func (s *Server) updateService(id string, payload ServiceUpdateRequest) (*Config
 	if fromGroup < 0 {
 		return nil, Service{}, fmt.Errorf("服务不存在")
 	}
+	internalURL, err := cfg.Access.canonicalInternalURL(payload.InternalURL, payload.SameHost)
+	if err != nil {
+		return nil, Service{}, err
+	}
 
 	service := cfg.Groups[fromGroup].Services[serviceIndex]
 	service.Name = payload.Name
 	service.Description = payload.Description
 	service.IconText = payload.IconText
 	service.Icon = payload.Icon
-	service.InternalURL = payload.InternalURL
+	service.InternalURL = internalURL
 	service.InternalDomainURL = payload.InternalDomainURL
 	service.ExternalURL = payload.ExternalURL
 	service.Tags = payload.Tags
@@ -1787,7 +1797,7 @@ const loginTemplate = `<!doctype html>
       <button class="access-mode-trigger" id="access-mode-button" type="button" aria-label="优先访问入口，当前外网优先" aria-haspopup="menu" aria-expanded="false" aria-controls="access-mode-menu"><span id="access-mode-label">外网优先</span><span class="access-mode-chevron" aria-hidden="true"></span></button>
       <div class="access-mode-menu" id="access-mode-menu" role="menu" aria-label="优先访问入口" hidden>
         <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="external" aria-checked="true" tabindex="-1">外网优先</button>
-        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1">内网 IP 优先</button>
+        <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal" aria-checked="false" tabindex="-1">内网直连优先</button>
         <button class="access-mode-option" type="button" role="menuitemradio" data-access-mode="internal_domain" aria-checked="false" tabindex="-1">内网域名优先</button>
       </div>
     </div>

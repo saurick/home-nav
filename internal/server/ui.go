@@ -71,11 +71,12 @@ type navigationData struct {
 	Groups            []navigationGroup `json:"groups"`
 	Appearance        Appearance        `json:"appearance"`
 	DefaultAccessMode string            `json:"default_access_mode"`
+	HomeHost          string            `json:"home_host,omitempty"`
 }
 
 // Only navigation fields cross this boundary; auth and local storage paths stay on the server.
 func navigationState(cfg *Config, requestHost string) navigationData {
-	data := navigationData{Groups: make([]navigationGroup, 0, len(cfg.Groups)), Appearance: cfg.Appearance, DefaultAccessMode: cfg.Access.defaultMode(requestHost)}
+	data := navigationData{Groups: make([]navigationGroup, 0, len(cfg.Groups)), Appearance: cfg.Appearance, DefaultAccessMode: cfg.Access.defaultMode(requestHost), HomeHost: cfg.Access.HomeHost}
 	for _, group := range cfg.Groups {
 		view := navigationGroup{ID: group.ID, Name: group.Name, Services: make([]navigationService, 0, len(group.Services))}
 		for _, service := range group.Services {
@@ -83,7 +84,8 @@ func navigationState(cfg *Config, requestHost string) navigationData {
 			view.Services = append(view.Services, navigationService{ID: service.ID, InternalAccessURL: cfg.Access.internalURL(service.InternalURL, requestHost), ServiceUpdateRequest: ServiceUpdateRequest{
 				Name: service.Name, Description: service.Description, IconText: service.IconText, Icon: service.Icon,
 				InternalURL: service.InternalURL, InternalDomainURL: service.InternalDomainURL, ExternalURL: service.ExternalURL,
-				Tags: append([]string{}, service.Tags...), Notes: service.Notes, GroupID: group.ID, Pinned: &pinned,
+				SameHost: cfg.Access.usesHomeHost(service.InternalURL),
+				Tags:     append([]string{}, service.Tags...), Notes: service.Notes, GroupID: group.ID, Pinned: &pinned,
 				Health: ServiceHealthUpdateRequest{Type: service.Health.Type, URL: service.Health.URL, Address: service.Health.Address,
 					ExpectStatus: service.Health.ExpectStatus, Timeout: service.Health.Timeout.String()},
 			}})
@@ -121,7 +123,7 @@ func userError(message string) (string, string) {
 		{"health.address", "请填写端口探测地址，例如 192.168.1.10:443。", "health_address"},
 		{"health.type", "请选择一种监测方式。", "health_type"},
 		{"internal_domain_url", "请填写有效的内网域名地址，以 http:// 或 https:// 开头。", "internal_domain_url"},
-		{"internal_url", "请填写有效的内网 IP 地址，以 http:// 或 https:// 开头。", "internal_url"},
+		{"internal_url", "请填写有效的内网直连地址，以 http:// 或 https:// 开头。", "internal_url"},
 		{"external_url", "请填写有效的外网地址，以 http:// 或 https:// 开头。", "external_url"},
 		{"appearance.background_color", "请输入六位颜色值，例如 #18212b。", "background_color"},
 		{"appearance.background_image", "请选择图库图片，或填写有效的图片地址。", "background_image"},
@@ -146,7 +148,7 @@ func userError(message string) (string, string) {
 		return "无法读取或保存文件，请检查存储位置和写入权限。", ""
 	}
 	switch message {
-	case "请先登录", "请求方法不支持", "请求内容无效", "至少需要保留一个分组", "分组下还有入口，请先移动或删除入口",
+	case "请先登录", "请求方法不支持", "请求内容无效", "至少需要保留一个分组", "分组下还有入口，请先移动或删除入口", "同机地址尚未配置，请使用服务自身地址",
 		"请选择图片文件", "读取图片失败", "图片不能为空", "图片不能超过 8MB", "生成文件名失败", "创建上传目录失败", "保存图片失败",
 		"请选择要删除的资源", "资源正在使用中，请先从背景或入口图标中移除", "资源不存在", "读取资源失败", "不能删除目录", "只能删除图片资源", "删除资源失败",
 		"仅支持 PNG、JPG、WEBP、GIF、SVG、ICO 图片", "资源类型无效", "请选择要操作的资源", "只能操作上传目录内的资源", "资源路径无效", "上传目录无效":
