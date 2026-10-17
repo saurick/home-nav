@@ -217,7 +217,10 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	_ = openRedirectTpl.Execute(w, struct{ Target string }{Target: target})
+	_ = openRedirectTpl.Execute(w, struct {
+		Target       string
+		AssetVersion string
+	}{Target: target, AssetVersion: uiAssetVersion})
 }
 
 func cacheStatic(next http.Handler) http.Handler {
@@ -1270,11 +1273,19 @@ const openRedirectTemplate = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="referrer" content="no-referrer">
-  <title>Opening...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>正在打开服务</title>
+  <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
+  <link rel="stylesheet" href="/assets/theme.css?v={{.AssetVersion}}">
+  <link rel="stylesheet" href="/assets/app.css?v={{.AssetVersion}}">
 </head>
-<body>
-  <p>正在打开链接。如果没有自动跳转，请使用下面的链接。</p>
-  <p><a href="{{.Target}}" rel="noreferrer">打开链接</a></p>
+<body class="home-nav">
+  <main class="redirect-page"><section class="redirect-card">
+    <h1>正在打开服务</h1>
+    <p>如果没有自动跳转，请点击下面的按钮。</p>
+    <a class="button primary" href="{{.Target}}" rel="noreferrer">打开服务</a>
+  </section></main>
   <script>
     const target = {{.Target}};
     setTimeout(() => { window.location.replace(target); }, 80);
@@ -1487,7 +1498,7 @@ const setupTemplate = `<!doctype html>
       --bad: var(--danger);
     }
     * { box-sizing: border-box; }
-    html { min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    html { min-height: 100%; background: var(--bg); color: var(--text); }
     body {
       min-height: 100vh;
       margin: 0;
@@ -1655,7 +1666,6 @@ const loginTemplate = `<!doctype html>
       --field: var(--input);
       --accent-strong: var(--primary-hover);
       --bad: var(--danger);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
     body {

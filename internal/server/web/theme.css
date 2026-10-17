@@ -1,4 +1,5 @@
 :root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color-scheme: dark;
   accent-color: var(--primary);
   caret-color: var(--accent);
@@ -21,7 +22,9 @@
   --primary-hover: color-mix(in srgb, var(--primary) 85%, #ffffff);
   --on-accent: #050607;
   --danger: #ffa1a8;
+  --danger-hover: color-mix(in srgb, var(--danger) 85%, #ffffff);
   --on-danger: #34151a;
+  --success: #70dfa1;
   --warning: #f5d287;
   --popover: var(--surface-raised);
   --shade: color-mix(in srgb, var(--primary) 8%, #101010);
@@ -32,6 +35,7 @@
   --accent-line: color-mix(in srgb, var(--primary) 45%, var(--line));
   --danger-soft: color-mix(in srgb, var(--danger) 8%, var(--surface));
   --warning-soft: color-mix(in srgb, var(--warning) 8%, var(--surface));
+  --image-checker: repeating-conic-gradient(var(--surface-soft) 0% 25%, var(--line) 0% 50%) 50% / 20px 20px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -50,10 +54,13 @@
   --line-strong: color-mix(in srgb, var(--primary) 15%, #b2b2b2);
   --placeholder: color-mix(in srgb, var(--primary) 10%, #6c6c6c);
   --danger: #b62c3f;
+  --danger-hover: color-mix(in srgb, var(--danger) 85%, #000000);
   --on-danger: #ffffff;
+  --success: #16834f;
   --warning: #805b00;
   --popover: #ffffff;
   --backdrop: color-mix(in srgb, var(--shade) 40%, transparent);
   --shadow: color-mix(in srgb, var(--shade) 15%, transparent);
 }
+button, input, textarea, select { font: inherit; }
 ::selection { color: var(--on-accent); background: var(--primary); }

@@ -149,7 +149,11 @@ func TestOpenRedirectPage(t *testing.T) {
 		t.Fatalf("unexpected referrer policy: %q", got)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"<title>Opening...</title>", "window.location.replace(target)", target} {
+	for _, want := range []string{
+		"<title>正在打开服务</title>", "window.location.replace(target)", target,
+		"/assets/theme.js?v=" + uiAssetVersion, "/assets/theme.css?v=" + uiAssetVersion,
+		"/assets/app.css?v=" + uiAssetVersion, "class=\"button primary\"",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected open redirect page to contain %q", want)
 		}

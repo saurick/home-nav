@@ -342,7 +342,8 @@
     adaptIcon(image);
   }
   document.addEventListener('load', event => {
-    if (event.target instanceof HTMLImageElement && event.target.closest('.icon-button')) adaptIcon(event.target);
+    const image = event.target;
+    if (image instanceof HTMLImageElement && (image.closest('.icon-button') || image.dataset.assetType === 'icon')) adaptIcon(image);
   }, true);
   document.addEventListener('error', event => {
     const image = event.target;
@@ -1131,7 +1132,7 @@
       const selected = selectedAssetURL() === asset.url; card.classList.toggle('is-selected', selected);
       const thumb = document.createElement('button'); thumb.type = 'button'; thumb.className = 'gallery-thumb'; thumb.dataset.action = 'select-asset';
       thumb.setAttribute('aria-label', (galleryMode === 'browse' ? '预览' : '选择') + '图片 ' + (asset.name || asset.url)); thumb.setAttribute('aria-pressed', String(selected));
-      const image = new Image(); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.src = asset.url;
+      const image = new Image(); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.dataset.assetType = asset.type; image.src = asset.url;
       image.addEventListener('error', () => { image.remove(); const text = document.createElement('span'); text.className = 'image-error'; text.textContent = '图片无法预览'; thumb.prepend(text); });
       thumb.append(image);
       if (selected) { const mark = document.createElement('span'); mark.className = 'selection-mark'; mark.innerHTML = icon('check'); thumb.append(mark); }
@@ -1149,6 +1150,7 @@
         actions.append(button);
       }
       body.append(name, meta, actions); card.append(body); grid.append(card);
+      if (asset.type === 'icon') adaptIcon(image);
     }
   }
   async function loadGallery() {
@@ -1201,9 +1203,19 @@
     } else if (galleryMode === 'background') {
       setting('background_image').value = asset.url; previewSettings(); closeDialog(galleryDialog); showToast('背景已选入，保存外观设置后生效。');
     } else {
-      $('#image-title').textContent = asset.name || '图片预览'; $('#image-preview').src = asset.url; $('#image-preview').alt = asset.name || '图片预览'; openDialog($('#image-dialog'));
+      $('#image-title').textContent = asset.name || '图片预览';
+      const image = $('#image-preview');
+      delete image.dataset.iconTone;
+      image.dataset.assetType = asset.type;
+      image.hidden = false; $('#image-preview-error').hidden = true;
+      image.src = asset.url; image.alt = asset.name || '图片预览';
+      if (asset.type === 'icon') adaptIcon(image);
+      openDialog($('#image-dialog'));
     }
   }
+  $('#image-preview').addEventListener('error', () => {
+    $('#image-preview').hidden = true; $('#image-preview-error').hidden = false;
+  });
   $('#gallery-grid').addEventListener('click', event => {
     const button = event.target.closest('button[data-action]'); const card = button?.closest('.gallery-card'); const asset = galleryAssets.find(item => item.url === card?.dataset.url);
     if (!asset) return;
