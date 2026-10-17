@@ -44,6 +44,7 @@ type PageData struct {
 }
 
 type LoginData struct {
+	AssetVersion      string
 	DefaultAccessMode string
 	Title             string
 	Error             string
@@ -163,6 +164,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/navigation/preview", s.handleAccessPreview)
 	s.mux.HandleFunc("/assets/app.css", handleUIAsset)
 	s.mux.HandleFunc("/assets/app.js", handleUIAsset)
+	s.mux.HandleFunc("/assets/theme.css", handleUIAsset)
+	s.mux.HandleFunc("/assets/theme.js", handleUIAsset)
 	s.mux.HandleFunc("/api/groups/sort", s.handleGroupSort)
 	s.mux.HandleFunc("/api/groups", s.handleGroups)
 	s.mux.HandleFunc("/api/groups/", s.handleGroup)
@@ -667,6 +670,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderLogin(w http.ResponseWriter, data LoginData) {
+	data.AssetVersion = uiAssetVersion
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.loginTpl.Execute(w, data)
 }
@@ -1220,8 +1224,8 @@ var cssEscapePattern = regexp.MustCompile(`["\\\n\r]`)
 
 func backgroundCSS(appearance Appearance) template.CSS {
 	color := appearance.BackgroundColor
-	if color == "" {
-		color = "#000000"
+	if color == "" || color == "#000" || color == "#000000" {
+		color = "var(--page,#000000)"
 	}
 	overlay := backgroundOverlayAlpha(appearance.BackgroundOverlay)
 	var b strings.Builder
@@ -1643,18 +1647,14 @@ const loginTemplate = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 - {{.Title}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
+  <link rel="stylesheet" href="/assets/theme.css?v={{.AssetVersion}}">
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #000;
-      --surface: #151515;
-      --field: #24242a;
-      --text: #f7f7f7;
-      --muted: #b5bac5;
-      --line: #4c4d56;
-      --accent: #67e0b6;
-      --accent-strong: #8ff0ce;
-      --bad: #ff8c8c;
+      --bg: var(--page);
+      --field: var(--input);
+      --accent-strong: var(--primary-hover);
+      --bad: var(--danger);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
@@ -1668,22 +1668,22 @@ const loginTemplate = `<!doctype html>
       padding: 24px;
     }
     .top-tools { position: fixed; top: 22px; right: 22px; display: flex; gap: 10px; z-index: 20; }
-    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: #141414; color: #fff; display: grid; place-items: center; cursor: pointer; }
-    .tool-button:hover { background: #242424; }
+    .tool-button { width: 48px; height: 48px; border: 0; border-radius: 8px; background: var(--surface); color: var(--text); display: grid; place-items: center; cursor: pointer; }
+    .tool-button:hover { background: var(--hover); }
     .tool-button .inline-icon { font-size: 22px; }
     .access-mode-control { position: relative; }
-    .access-mode-trigger { width: 142px; height: 48px; padding: 0 15px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #4c4d56; border-radius: 12px; background: #141414; color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: #73777b; background: #242424; }
-    .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid #67e0b6; outline-offset: 2px; }
-    .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid #c8d4ce; border-bottom: 2px solid #c8d4ce; transform: translateY(-2px) rotate(45deg); }
+    .access-mode-trigger { width: 142px; height: 48px; padding: 0 15px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: var(--accent); background: var(--hover); }
+    .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: translateY(-2px) rotate(45deg); }
     .access-mode-trigger[aria-expanded="true"] .access-mode-chevron { transform: translateY(2px) rotate(225deg); }
-    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid #4c4d56; border-radius: 12px; background: #1c211e; box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--popover); box-shadow: 0 14px 36px rgba(0,0,0,.42); }
     .access-mode-menu[hidden] { display: none; }
-    .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: #f7f7f7; font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
-    .access-mode-option:hover, .access-mode-option:focus-visible { background: #29342f; }
-    .access-mode-option[aria-checked="true"] { background: #263b30; font-weight: 600; }
-    .access-mode-option[aria-checked="true"]:hover, .access-mode-option[aria-checked="true"]:focus-visible { background: #304d3b; }
-    .access-mode-option::after { content: ''; width: 6px; height: 10px; margin: -3px 4px 0 0; flex: 0 0 auto; border-right: 2px solid #67e0b6; border-bottom: 2px solid #67e0b6; transform: rotate(45deg); opacity: 0; }
+    .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
+    .access-mode-option:hover, .access-mode-option:focus-visible { background: var(--hover); }
+    .access-mode-option[aria-checked="true"] { background: var(--accent-soft); font-weight: 600; }
+    .access-mode-option[aria-checked="true"]:hover, .access-mode-option[aria-checked="true"]:focus-visible { background: var(--accent-soft); }
+    .access-mode-option::after { content: ''; width: 6px; height: 10px; margin: -3px 4px 0 0; flex: 0 0 auto; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg); opacity: 0; }
     .access-mode-option[aria-checked="true"]::after { opacity: 1; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
@@ -1734,7 +1734,7 @@ const loginTemplate = `<!doctype html>
     }
     input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(103, 224, 182, .15);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
     .password-field {
       position: relative;
@@ -1747,8 +1747,8 @@ const loginTemplate = `<!doctype html>
       min-height: 48px;
       border: 1px solid var(--accent);
       border-radius: 8px;
-      background: var(--accent);
-      color: #050505;
+      background: var(--primary);
+      color: var(--on-accent);
       font-size: 16px;
       cursor: pointer;
       font-weight: 700;
@@ -1772,7 +1772,7 @@ const loginTemplate = `<!doctype html>
       cursor: pointer;
     }
     .password-toggle:hover {
-      background: rgba(255,255,255,.08);
+      background: var(--hover);
       color: var(--text);
     }
     .password-toggle .inline-icon { font-size: 22px; }

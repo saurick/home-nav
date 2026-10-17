@@ -10,11 +10,17 @@ import (
 	"strings"
 )
 
-//go:embed web/index.html web/app.css web/app.js
+//go:embed web/index.html web/app.css web/app.js web/theme.css web/theme.js
 var uiFiles embed.FS
 
 var indexTemplate = string(uiFile("web/index.html"))
-var uiAssetVersion = fmt.Sprintf("%x", sha256.Sum256(append(uiFile("web/app.css"), uiFile("web/app.js")...)))[:12]
+var uiAssetVersion = func() string {
+	hash := sha256.New()
+	for _, name := range []string{"app.css", "app.js", "theme.css", "theme.js"} {
+		_, _ = hash.Write(uiFile("web/" + name))
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil))[:12]
+}()
 
 func uiFile(name string) []byte {
 	body, err := uiFiles.ReadFile(name)
@@ -30,12 +36,12 @@ func handleUIAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/assets/")
-	if name != "app.css" && name != "app.js" {
+	if name != "app.css" && name != "app.js" && name != "theme.css" && name != "theme.js" {
 		http.NotFound(w, r)
 		return
 	}
 	contentType := "text/css; charset=utf-8"
-	if name == "app.js" {
+	if strings.HasSuffix(name, ".js") {
 		contentType = "text/javascript; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", contentType)

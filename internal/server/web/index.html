@@ -6,6 +6,8 @@
   <meta name="color-scheme" content="dark">
   <title>{{.Title}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
+  <link rel="stylesheet" href="/assets/theme.css?v={{.AssetVersion}}">
   <link rel="stylesheet" href="/assets/app.css?v={{.AssetVersion}}">
   <script id="navigation-data" type="application/json">{{.NavigationJSON}}</script>
   <script id="ui-icon-data" type="application/json">{{iconSetJSON}}</script>
@@ -99,9 +101,35 @@
     </form>
   </dialog>
 
-  <dialog class="modal" id="settings-dialog" aria-labelledby="settings-title">
+  <dialog class="modal settings-modal" id="settings-dialog" aria-labelledby="settings-title">
     <div class="modal-head"><h2 id="settings-title">页面设置</h2><button class="close-button icon-action" type="button" data-close aria-label="关闭页面设置">{{icon "mdi:close"}}</button></div>
-    <form id="settings-form" class="dialog-form" novalidate><div class="dialog-body"><div class="settings-preview" id="settings-preview"><div class="preview-caption">背景预览</div><div class="preview-card"><span class="preview-symbol">{{icon "mdi:web"}}</span><span>服务入口</span><span class="preview-route">内网域名</span></div></div><div class="form-grid"><div class="field"><label for="background-color">背景颜色</label><div class="color-row"><input name="background_color_picker" type="color" aria-label="选择背景颜色"><input id="background-color" name="background_color" placeholder="#000000" autocomplete="off"></div></div><div class="field"><label for="background-overlay">壁纸遮罩</label><select id="background-overlay" name="background_overlay"><option value="low">轻</option><option value="medium">适中</option><option value="high">深</option></select></div><div class="field full"><label for="background-image">背景图片</label><input id="background-image" name="background_image" placeholder="选择图库图片，或粘贴图片地址"><div class="inline-actions"><button class="button" type="button" id="open-background-gallery-button">{{icon "mdi:image-multiple-outline"}}选择图片</button><button class="button" type="button" id="upload-background-button">{{icon "mdi:upload"}}上传图片</button></div><p class="help">更换图片后，与颜色和遮罩一起保存。支持 PNG、JPEG、WebP、GIF、SVG，单张不超过 8 MB。</p></div></div><p class="form-feedback" id="settings-feedback" role="alert" hidden></p></div><div class="form-actions"><button class="button text-button" type="button" id="reset-background-button">恢复默认</button><span class="action-spacer"></span><button class="button" type="button" data-close>取消</button><button class="button primary" type="submit">保存设置</button></div></form>
+    <form id="settings-form" class="dialog-form" novalidate>
+      <div class="dialog-body">
+        <div class="appearance-settings">
+          <fieldset><legend>主题色</legend><div class="theme-swatches" id="theme-swatches"></div></fieldset>
+          <fieldset><legend>明暗模式</legend><div class="appearance-segmented" role="radiogroup" aria-label="明暗模式">
+            <label><input class="sr-only" type="radio" name="theme_mode" value="system"><span>{{icon "mdi:monitor"}}跟系统</span></label>
+            <label><input class="sr-only" type="radio" name="theme_mode" value="light"><span>{{icon "mdi:white-balance-sunny"}}浅色</span></label>
+            <label><input class="sr-only" type="radio" name="theme_mode" value="dark" checked><span>{{icon "mdi:weather-night"}}暗色</span></label>
+          </div></fieldset>
+          <fieldset><legend>卡片密度</legend><div class="appearance-segmented" role="radiogroup" aria-label="卡片密度">
+            <label><input class="sr-only" type="radio" name="density" value="comfortable"><span>标准</span></label>
+            <label><input class="sr-only" type="radio" name="density" value="compact" checked><span>紧凑</span></label>
+          </div></fieldset>
+        </div>
+        <p class="help appearance-help">选择后立即预览，保存设置后记住当前浏览器的外观。</p>
+        <details class="form-section background-section" id="background-section"><summary>背景与壁纸</summary>
+          <div class="settings-preview" id="settings-preview"><div class="preview-caption">背景预览</div><div class="preview-card"><span class="preview-symbol">{{icon "mdi:web"}}</span><span>服务入口</span><span class="preview-route">内网域名</span></div></div>
+          <div class="form-grid">
+            <div class="field"><label for="background-color">背景颜色</label><div class="color-row"><input name="background_color_picker" type="color" aria-label="选择背景颜色"><input id="background-color" name="background_color" placeholder="#000000" autocomplete="off"></div></div>
+            <div class="field"><label for="background-overlay">壁纸遮罩</label><select id="background-overlay" name="background_overlay"><option value="low">轻</option><option value="medium">适中</option><option value="high">深</option></select></div>
+            <div class="field full"><label for="background-image">背景图片</label><input id="background-image" name="background_image" placeholder="选择图库图片，或粘贴图片地址"><div class="inline-actions"><button class="button" type="button" id="open-background-gallery-button">{{icon "mdi:image-multiple-outline"}}选择图片</button><button class="button" type="button" id="upload-background-button">{{icon "mdi:upload"}}上传图片</button></div><p class="help">默认背景随明暗模式变化。更换图片后，与背景颜色和遮罩一起保存；单张不超过 8 MB。</p></div>
+          </div>
+        </details>
+        <p class="form-feedback" id="settings-feedback" role="alert" hidden></p>
+      </div>
+      <div class="form-actions"><button class="button text-button" type="button" id="reset-background-button">恢复默认</button><span class="action-spacer"></span><button class="button" type="button" data-close>取消</button><button class="button primary" type="submit">保存设置</button></div>
+    </form>
   </dialog>
 
   <dialog class="modal gallery-modal" id="gallery-dialog" aria-labelledby="gallery-title">

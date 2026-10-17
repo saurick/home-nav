@@ -21,6 +21,7 @@
   const setting = name => settingsForm.elements.namedItem(name);
   const groupField = name => groupForm.elements.namedItem(name);
   const modes = ['external', 'internal', 'internal_domain'];
+  const theme = window.HomeNavTheme;
   const modeLabels = { external: '外网', internal: '内网直连', internal_domain: '内网域名' };
   const urlFields = { external: 'external_url', internal: 'internal_url', internal_domain: 'internal_domain_url' };
   const cards = new Map($$('.app-icon', groupsRoot).map(node => [node.dataset.serviceId, node]));
@@ -64,12 +65,16 @@
   }
   let accessMode = readStorage('home-nav.access-mode', navigation.default_access_mode);
   if (!modes.includes(accessMode)) accessMode = navigation.default_access_mode;
-  let preferences;
-  try { preferences = JSON.parse(readStorage('home-nav.view-preferences', '{}')); } catch (_) { preferences = {}; }
-  if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) preferences = {};
-  preferences.density = preferences.density === 'comfortable' ? 'comfortable' : 'compact';
-  preferences.collapsed = Array.isArray(preferences.collapsed) ? preferences.collapsed.filter(id => typeof id === 'string') : [];
-  function savePreferences() { writeStorage('home-nav.view-preferences', JSON.stringify(preferences)); }
+  let preferences = theme.read();
+  let previewPreferences = null;
+  const activePreferences = () => previewPreferences || preferences;
+  function savePreferences() { preferences = theme.save(preferences); }
+  for (const [value, palette] of Object.entries(theme.accents)) {
+    const label = document.createElement('label');
+    const input = document.createElement('input'); input.className = 'sr-only'; input.type = 'radio'; input.name = 'accent'; input.value = value; input.checked = value === preferences.accent;
+    const content = document.createElement('span'); const dot = document.createElement('i'); dot.style.backgroundColor = palette.primary; dot.setAttribute('aria-hidden', 'true');
+    content.append(dot, document.createTextNode(palette.label)); label.append(input, content); $('#theme-swatches').append(label);
+  }
   const allServices = () => navigation.groups.flatMap(group => group.services);
   const service = id => allServices().find(item => item.id === id);
   const group = id => navigation.groups.find(item => item.id === id);
@@ -175,6 +180,7 @@
   function openDialog(dialog, focus) {
     closePopovers();
     if (dialog.open) return;
+    for (const select of $$('select', dialog)) syncSelect(select);
     returnFocus.set(dialog, document.activeElement);
     dialog.showModal();
     updateModalState();
@@ -183,7 +189,7 @@
   function closeDialog(dialog) {
     dialog.close();
     updateModalState();
-    if (dialog === settingsDialog) applyAppearance(navigation.appearance);
+    if (dialog === settingsDialog) { previewPreferences = null; theme.apply(preferences); applyAppearance(navigation.appearance); }
     if (dialog === editDialog) $('#upload-file').value = '';
     if (dialog === groupsDialog) { groupSortDirty = false; groupForm.hidden = true; renderGroupManager(); }
     const previous = returnFocus.get(dialog);
@@ -249,9 +255,10 @@
     label.textContent = message;
     input.setAttribute('aria-invalid', 'true');
     input.setAttribute('aria-errormessage', label.id);
+    syncSelect(input);
     if (focus) {
       for (const details of $$('details', form)) if (details.contains(input)) details.open = true;
-      input.focus();
+      (selectControls.get(input)?.trigger || input).focus();
     }
   }
   function formError(form, error) {
@@ -272,6 +279,7 @@
   for (const form of [editForm, settingsForm, groupForm]) form.addEventListener('input', event => {
     event.target.removeAttribute('aria-invalid');
     event.target.removeAttribute('aria-errormessage');
+    syncSelect(event.target);
     $('.field-error', event.target.closest('.field') || form)?.remove();
   });
 
@@ -356,9 +364,9 @@
     if (dragState?.active) return;
     const pendingOrder = editMode && (sortDirty || sortSaving) ? sortPayload() : null;
     closePopovers();
-    document.body.dataset.density = preferences.density;
+    document.body.dataset.density = activePreferences().density;
     $('.edit-hint').textContent = search.value.trim() ? '搜索时可编辑入口；清空搜索后可拖拽排序' : '点击编辑入口，使用拖拽把手调整位置';
-    $('#density-button > span:last-child').textContent = '显示密度：' + (preferences.density === 'compact' ? '紧凑' : '舒适');
+    $('#density-button > span:last-child').textContent = '显示密度：' + (activePreferences().density === 'compact' ? '紧凑' : '标准');
     const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     const all = allServices();
     const liveIDs = new Set(all.map(item => item.id));
@@ -462,6 +470,47 @@
     }
   }
   const popovers = [[$('#access-mode-menu'), $('#access-mode-button')], [$('#tools-menu'), $('#tools-menu-button')]];
+  const selectControls = new Map();
+  const selectSources = new Map();
+  function syncSelect(select) {
+    const control = selectControls.get(select);
+    if (!control) return;
+    $('.select-value', control.trigger).textContent = select.selectedOptions[0]?.textContent || '请选择';
+    control.trigger.disabled = select.disabled;
+    for (const name of ['aria-invalid', 'aria-errormessage']) {
+      if (select.hasAttribute(name)) control.trigger.setAttribute(name, select.getAttribute(name));
+      else control.trigger.removeAttribute(name);
+    }
+  }
+  function selectOptions(select) {
+    const { trigger, menu } = selectControls.get(select);
+    syncSelect(select); menu.replaceChildren();
+    for (const option of select.options) {
+      if (option.hidden) continue;
+      const button = document.createElement('button'); button.type = 'button'; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(option.selected)); button.tabIndex = -1; button.disabled = option.disabled;
+      const text = document.createElement('span'); text.textContent = option.textContent;
+      const check = document.createElement('span'); check.className = 'select-check'; check.innerHTML = icon('check');
+      button.append(text, check);
+      button.addEventListener('click', () => {
+        select.value = option.value;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        syncSelect(select); closePopover(menu, trigger, true);
+      });
+      menu.append(button);
+    }
+  }
+  for (const select of $$('select')) {
+    const label = document.querySelector('label[for="' + select.id + '"]');
+    const wrapper = document.createElement('div'); wrapper.className = 'select-control';
+    const trigger = document.createElement('button'); trigger.type = 'button'; trigger.id = select.id + '-trigger'; trigger.className = 'select-trigger'; trigger.setAttribute('role', 'combobox'); trigger.setAttribute('aria-haspopup', 'listbox'); trigger.setAttribute('aria-expanded', 'false');
+    const value = document.createElement('span'); value.className = 'select-value'; value.id = trigger.id + '-value';
+    trigger.append(value); trigger.insertAdjacentHTML('beforeend', icon('chevron-down'));
+    const menu = document.createElement('div'); menu.className = 'popover select-menu'; menu.id = select.id + '-options'; menu.hidden = true; menu.setAttribute('role', 'listbox'); trigger.setAttribute('aria-controls', menu.id);
+    if (label) { label.htmlFor = trigger.id; label.id ||= select.id + '-label'; trigger.setAttribute('aria-labelledby', label.id + ' ' + value.id); menu.setAttribute('aria-labelledby', label.id); }
+    select.before(wrapper); wrapper.append(select, trigger, menu); select.hidden = true; select.tabIndex = -1;
+    selectControls.set(select, { trigger, menu }); selectSources.set(trigger, select); popovers.push([menu, trigger]); syncSelect(select);
+  }
   function closePopover(menu, trigger, restore = false) {
     menu.hidden = true; trigger?.setAttribute('aria-expanded', 'false');
     if (restore) trigger?.focus({ preventScroll: true });
@@ -474,14 +523,19 @@
     const open = last => {
       const wasOpen = !menu.hidden; closePopovers();
       if (wasOpen) return;
+      const select = selectSources.get(trigger);
+      if (select) { selectOptions(select); menu.style.width = Math.min(trigger.getBoundingClientRect().width, innerWidth - 24) + 'px'; }
       menu.hidden = false; trigger.setAttribute('aria-expanded', 'true');
       positionPopover(menu, trigger);
       const buttons = $$('button', menu);
-      (last ? buttons.at(-1) : $('[aria-checked=true]', menu) || buttons[0])?.focus();
+      (last ? buttons.at(-1) : $('[aria-checked=true], [aria-selected=true]', menu) || buttons[0])?.focus();
     };
     trigger.addEventListener('click', () => open(false));
     trigger.addEventListener('keydown', event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(event.key === 'ArrowUp'); } });
-    menu.addEventListener('keydown', event => menuKeys(event, menu, () => closePopover(menu, trigger, true)));
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Tab' && selectSources.has(trigger)) closePopover(menu, trigger, true);
+      else menuKeys(event, menu, () => closePopover(menu, trigger, true));
+    });
     menu.addEventListener('focusout', event => { if (!menu.contains(event.relatedTarget) && event.relatedTarget !== trigger) closePopover(menu, trigger); });
   }
   function positionPopover(menu, trigger) {
@@ -489,8 +543,10 @@
     menu.style.position = 'fixed';
     menu.style.right = 'auto';
     menu.style.left = Math.max(12, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 12)) + 'px';
-    menu.style.top = Math.max(12, Math.min(rect.bottom + 8, innerHeight - menu.offsetHeight - 12)) + 'px';
-    menu.style.maxHeight = Math.max(120, innerHeight - 24) + 'px';
+    menu.style.maxHeight = Math.min(menu.classList.contains('select-menu') ? 280 : innerHeight, Math.max(120, innerHeight - 24)) + 'px';
+    const above = rect.top - menu.offsetHeight - 8;
+    const top = rect.bottom + menu.offsetHeight + 8 > innerHeight - 12 && above >= 12 ? above : rect.bottom + 8;
+    menu.style.top = Math.max(12, Math.min(top, innerHeight - menu.offsetHeight - 12)) + 'px';
     menu.style.overflowY = 'auto';
   }
   window.addEventListener('resize', () => { closePopovers(); if (dragState) finishDrag(true); });
@@ -504,7 +560,7 @@
     const buttons = $$('button:not(:disabled)', menu).filter(node => !node.hidden);
     const index = buttons.indexOf(document.activeElement);
     let next;
-    if (event.key === 'Escape') { event.preventDefault(); return close(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); return close(); }
     if (event.key === 'ArrowDown') next = (index + 1) % buttons.length;
     if (event.key === 'ArrowUp') next = (index - 1 + buttons.length) % buttons.length;
     if (event.key === 'Home') next = 0;
@@ -512,8 +568,9 @@
     if (next !== undefined) { event.preventDefault(); buttons[next]?.focus(); }
   }
   document.addEventListener('pointerdown', event => {
-    if (!event.target.closest('.popover, .access-mode-control, .tools-control, .card-more')) closePopovers();
+    if (!event.target.closest('.popover, .access-mode-control, .tools-control, .select-control, .card-more')) closePopovers();
   });
+  for (const body of $$('.dialog-body')) body.addEventListener('scroll', event => { if (event.target === body) closePopovers(); });
   $('#access-mode-menu').addEventListener('click', event => {
     const button = event.target.closest('button[data-access-mode]');
     if (!button) return;
@@ -525,8 +582,9 @@
   });
   $('#density-button').addEventListener('click', () => {
     preferences.density = preferences.density === 'compact' ? 'comfortable' : 'compact';
+    theme.apply(preferences);
     savePreferences(); renderNavigation(); $('#tools-menu-button').focus({ preventScroll: true });
-    showToast('已切换为' + (preferences.density === 'compact' ? '紧凑' : '舒适') + '显示。');
+    showToast('已切换为' + (preferences.density === 'compact' ? '紧凑' : '标准') + '显示。');
   });
   $('#refresh-navigation-button').addEventListener('click', () => { closePopovers(); reloadNavigation(); });
 
@@ -690,8 +748,10 @@
   $('#delete-service-button').addEventListener('click', () => openDelete('service', field('id').value, service(field('id').value)?.name || field('name').value));
 
   function appearanceStyle(target, appearance, fixed = false) {
-    target.style.backgroundColor = appearance.background_color || '#000000';
-    target.style.setProperty('--heading-surface', appearance.background_image ? 'rgba(14,20,29,.94)' : appearance.background_color || '#000000');
+    const mode = document.documentElement.dataset.theme;
+    const color = theme.backgroundColor(appearance, mode);
+    target.style.backgroundColor = color;
+    target.style.setProperty('--heading-surface', appearance.background_image || !/^#(?:000|000000)$/i.test(appearance.background_color) ? 'var(--surface)' : color);
     const alpha = { low: .18, medium: .30, high: .42 }[appearance.background_overlay] || .30;
     target.style.backgroundImage = appearance.background_image ? 'linear-gradient(rgba(0,0,0,' + alpha + '),rgba(0,0,0,' + alpha + ')),url(' + JSON.stringify(appearance.background_image) + ')' : '';
     target.style.backgroundSize = appearance.background_image ? 'cover' : '';
@@ -710,35 +770,51 @@
     return { background_color: setting('background_color').value.trim(), background_image: setting('background_image').value.trim(), background_overlay: setting('background_overlay').value };
   }
   function previewSettings() {
+    previewPreferences = { ...preferences, accent: setting('accent').value, theme_mode: setting('theme_mode').value, density: setting('density').value };
+    theme.apply(previewPreferences);
     const draft = draftAppearance();
     appearanceStyle($('#settings-preview'), draft);
     applyAppearance(draft, false);
+    syncSelect(setting('background_overlay'));
     if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(draft.background_color)) setting('background_color_picker').value = draft.background_color.length === 4 ? '#' + [...draft.background_color.slice(1)].map(value => value + value).join('') : draft.background_color;
   }
   function openSettings() {
     clearErrors(settingsForm);
+    for (const name of ['accent', 'theme_mode', 'density']) setting(name).value = preferences[name];
     for (const [name, value] of Object.entries(navigation.appearance)) setting(name).value = value;
     setting('background_color_picker').value = navigation.appearance.background_color;
     previewSettings(); rememberForm(settingsForm);
-    openDialog(settingsDialog, setting('background_color'));
+    $('#background-section').open = false;
+    openDialog(settingsDialog, $('input[name=accent]:checked', settingsForm));
   }
   $('#open-settings-button').addEventListener('click', openSettings);
   settingsForm.addEventListener('input', event => {
     if (event.target.name === 'background_color_picker') setting('background_color').value = event.target.value;
     previewSettings();
   });
-  setting('background_overlay').addEventListener('change', previewSettings);
+  document.addEventListener('home-nav-themechange', () => {
+    const appearance = previewPreferences ? draftAppearance() : navigation.appearance;
+    applyAppearance(appearance, false);
+    if (previewPreferences) appearanceStyle($('#settings-preview'), appearance);
+  });
   $('#reset-background-button').addEventListener('click', () => {
+    const defaults = theme.normalize(null);
+    for (const name of ['accent', 'theme_mode', 'density']) setting(name).value = defaults[name];
     setting('background_color').value = '#000000'; setting('background_image').value = ''; setting('background_overlay').value = 'medium'; previewSettings();
   });
   settingsForm.addEventListener('submit', event => {
     event.preventDefault(); clearErrors(settingsForm);
     const payload = draftAppearance();
+    const view = { ...previewPreferences };
     if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(payload.background_color)) return setFieldError(settingsForm, 'background_color', '请输入有效颜色值，例如 #18212b。');
     if (payload.background_image && !payload.background_image.startsWith('/uploads/') && !webURL(payload.background_image)) return setFieldError(settingsForm, 'background_image', '请选择图库图片，或填写有效的图片地址。');
     submit(settingsForm, $('button[type=submit]', settingsForm), '正在保存…', async () => {
-      const result = await mutate('/api/settings', { method: 'PUT', body: payload });
-      applyNavigation(result.navigation); rememberForm(settingsForm); closeDialog(settingsDialog); showToast('页面设置已保存。');
+      if (Object.entries(payload).some(([key, value]) => navigation.appearance[key] !== value)) {
+        const result = await mutate('/api/settings', { method: 'PUT', body: payload });
+        applyNavigation(result.navigation);
+      }
+      preferences = { ...preferences, accent: view.accent, theme_mode: view.theme_mode, density: view.density };
+      savePreferences(); theme.apply(preferences); renderNavigation(); rememberForm(settingsForm); closeDialog(settingsDialog); showToast('页面设置已保存。');
     });
   });
 

@@ -22,7 +22,7 @@ func uiRequest(t *testing.T, srv *Server, method, path, body string) *httptest.R
 }
 
 func TestUIAssetsAreEmbeddedAndVersioned(t *testing.T) {
-	for _, name := range []string{"app.css", "app.js"} {
+	for _, name := range []string{"app.css", "app.js", "theme.css", "theme.js"} {
 		t.Run(name, func(t *testing.T) {
 			path := "/assets/" + name
 			rec := httptest.NewRecorder()
@@ -31,7 +31,7 @@ func TestUIAssetsAreEmbeddedAndVersioned(t *testing.T) {
 				t.Fatalf("missing embedded asset: %d", rec.Code)
 			}
 			contentType := "text/css; charset=utf-8"
-			if name == "app.js" {
+			if strings.HasSuffix(name, ".js") {
 				contentType = "text/javascript; charset=utf-8"
 			}
 			if rec.Header().Get("Content-Type") != contentType || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
