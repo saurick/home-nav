@@ -38,6 +38,7 @@ var uiIconShapes = map[string]string{
 	"mdi:monitor":                      `<rect x="3" y="4" width="18" height="13" rx="1"/><path d="M12 17v4M8 21h8"/>`,
 	"mdi:white-balance-sunny":          `<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>`,
 	"mdi:weather-night":                `<path d="M20 15a9 9 0 0 1-11-11A9 9 0 1 0 20 15Z"/>`,
+	"mdi:palette-outline":              `<path d="M12 3a9 9 0 1 0 9 9c0-1.1-.9-2-2-2h-2.2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2H12Z"/><circle cx="7.5" cy="10" r=".7"/><circle cx="9.5" cy="6.5" r=".7"/><circle cx="7.5" cy="14" r=".7"/>`,
 	"mdi:format-list-bulleted":         `<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>`,
 }
 

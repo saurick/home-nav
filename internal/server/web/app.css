@@ -48,6 +48,7 @@ input[type="search"]::-webkit-search-cancel-button { display: none; }
 .search-clear { background: transparent; border: 0; }
 .edit-mode-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .edit-mode-button { white-space: nowrap; }
+.appearance-button[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
 .access-mode-control, .tools-control { position: relative; }
 .access-mode-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 154px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--text); background: var(--control); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .access-mode-trigger[aria-expanded="true"] { border-color: var(--accent); }
@@ -322,6 +323,8 @@ body[data-density="compact"] .app-name { height: 36px; font-size: 13px; line-hei
 }
 @media (max-width: 360px) {
   .access-mode-trigger { width: 126px; padding: 0 10px; }
+  .edit-mode-button { width: 44px; padding: 0; gap: 0; }
+  .edit-mode-button > span:last-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-duration: 0ms; }

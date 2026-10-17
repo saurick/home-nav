@@ -175,6 +175,7 @@
   function updateModalState() {
     const open = $$('dialog[open]');
     document.body.classList.toggle('modal-open', open.length > 0);
+    $('#open-settings-button').setAttribute('aria-expanded', String(settingsDialog.open));
     (open.at(-1) || document.body).append($('#toast'));
   }
   function openDialog(dialog, focus) {
@@ -366,7 +367,6 @@
     closePopovers();
     document.body.dataset.density = activePreferences().density;
     $('.edit-hint').textContent = search.value.trim() ? '搜索时可编辑入口；清空搜索后可拖拽排序' : '点击编辑入口，使用拖拽把手调整位置';
-    $('#density-button > span:last-child').textContent = '显示密度：' + (activePreferences().density === 'compact' ? '紧凑' : '标准');
     const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     const all = allServices();
     const liveIDs = new Set(all.map(item => item.id));
@@ -579,12 +579,6 @@
     renderNavigation();
     $('#access-mode-button').focus({ preventScroll: true });
     showToast(modeLabels[accessMode] + '优先，缺少时使用其他已配置地址。');
-  });
-  $('#density-button').addEventListener('click', () => {
-    preferences.density = preferences.density === 'compact' ? 'comfortable' : 'compact';
-    theme.apply(preferences);
-    savePreferences(); renderNavigation(); $('#tools-menu-button').focus({ preventScroll: true });
-    showToast('已切换为' + (preferences.density === 'compact' ? '紧凑' : '标准') + '显示。');
   });
   $('#refresh-navigation-button').addEventListener('click', () => { closePopovers(); reloadNavigation(); });
 
@@ -814,7 +808,7 @@
         applyNavigation(result.navigation);
       }
       preferences = { ...preferences, accent: view.accent, theme_mode: view.theme_mode, density: view.density };
-      savePreferences(); theme.apply(preferences); renderNavigation(); rememberForm(settingsForm); closeDialog(settingsDialog); showToast('页面设置已保存。');
+      savePreferences(); theme.apply(preferences); renderNavigation(); rememberForm(settingsForm); closeDialog(settingsDialog); showToast('外观设置已保存。');
     });
   });
 
@@ -1143,7 +1137,7 @@
   function openGallery(mode = 'browse') {
     galleryMode = mode; $('#gallery-search').value = '';
     $('#gallery-title').textContent = mode === 'icon' ? '选择入口图标' : mode === 'background' ? '选择背景图片' : '图库';
-    $('#gallery-help').textContent = mode === 'browse' ? '点击图片预览，可复制地址或删除未使用的图片。' : '点击图片选入，完成后保存' + (mode === 'icon' ? '入口。' : '页面设置。');
+    $('#gallery-help').textContent = mode === 'browse' ? '点击图片预览，可复制地址或删除未使用的图片。' : '点击图片选入，完成后保存' + (mode === 'icon' ? '入口。' : '外观设置。');
     for (const button of $$('[data-upload-type]')) button.hidden = (mode === 'icon' && button.dataset.uploadType !== 'icon') || (mode === 'background' && button.dataset.uploadType !== 'wallpaper');
     setGalleryFilter(mode === 'icon' ? 'icon' : mode === 'background' ? 'wallpaper' : 'all');
     openDialog(galleryDialog, $('[aria-selected=true]', galleryDialog));
@@ -1168,7 +1162,7 @@
     if (galleryMode === 'icon') {
       field('icon').value = asset.url; refreshPreview(); closeDialog(galleryDialog); showToast('图标已选入，保存入口后生效。');
     } else if (galleryMode === 'background') {
-      setting('background_image').value = asset.url; previewSettings(); closeDialog(galleryDialog); showToast('背景已选入，保存页面设置后生效。');
+      setting('background_image').value = asset.url; previewSettings(); closeDialog(galleryDialog); showToast('背景已选入，保存外观设置后生效。');
     } else {
       $('#image-title').textContent = asset.name || '图片预览'; $('#image-preview').src = asset.url; $('#image-preview').alt = asset.name || '图片预览'; openDialog($('#image-dialog'));
     }
@@ -1201,7 +1195,7 @@
       const result = await mutate('/api/uploads', { method: 'POST', body: data });
       if (!result.url) throw new RequestError('图片结果未能完整读取，请重新读取图库确认。');
       if (target === 'icon') { field('icon').value = result.url; refreshPreview(); showToast('图标已上传并选入，保存入口后生效。'); }
-      else if (target === 'background') { setting('background_image').value = result.url; previewSettings(); showToast('背景已上传并选入，保存页面设置后生效。'); }
+      else if (target === 'background') { setting('background_image').value = result.url; previewSettings(); showToast('背景已上传并选入，保存外观设置后生效。'); }
       else if (galleryMode !== 'browse') selectAsset({ url: result.url, type });
       else { await loadGallery(); showToast('图片已上传。'); }
     }).finally(() => { event.target.value = ''; });
@@ -1312,6 +1306,7 @@
     $('#edit-mode-button').setAttribute('aria-pressed', String(value));
     $('#edit-mode-button > span:last-child').textContent = value ? '完成' : '编辑';
     $('#edit-mode-button').setAttribute('aria-label', value ? '完成编辑' : '开启编辑');
+    $('#edit-mode-button').title = value ? '完成编辑' : '开启编辑';
     renderNavigation(); sortFeedback();
     $('#edit-mode-button').focus({ preventScroll: true });
   }
