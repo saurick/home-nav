@@ -350,6 +350,8 @@ func TestSetupPageAllowsPrivateSource(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"首次使用，请设置管理员账号。",
+		"/assets/theme.js?v=" + uiAssetVersion,
+		"/assets/theme.css?v=" + uiAssetVersion,
 		"id=\"setup-password\"",
 		"id=\"setup-confirm-password\"",
 		"data-target=\"setup-password\"",

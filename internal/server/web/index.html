@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light dark">
   <title>{{.Title}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
@@ -107,9 +107,9 @@
         <div class="appearance-settings">
           <fieldset><legend>主题色</legend><div class="theme-swatches" id="theme-swatches"></div></fieldset>
           <fieldset><legend>明暗模式</legend><div class="appearance-segmented" role="radiogroup" aria-label="明暗模式">
-            <label><input class="sr-only" type="radio" name="theme_mode" value="system"><span>{{icon "mdi:monitor"}}跟系统</span></label>
+            <label><input class="sr-only" type="radio" name="theme_mode" value="system" checked><span>{{icon "mdi:monitor"}}跟系统</span></label>
             <label><input class="sr-only" type="radio" name="theme_mode" value="light"><span>{{icon "mdi:white-balance-sunny"}}浅色</span></label>
-            <label><input class="sr-only" type="radio" name="theme_mode" value="dark" checked><span>{{icon "mdi:weather-night"}}暗色</span></label>
+            <label><input class="sr-only" type="radio" name="theme_mode" value="dark"><span>{{icon "mdi:weather-night"}}暗色</span></label>
           </div></fieldset>
           <fieldset><legend>卡片密度</legend><div class="appearance-segmented" role="radiogroup" aria-label="卡片密度">
             <label><input class="sr-only" type="radio" name="density" value="comfortable"><span>标准</span></label>

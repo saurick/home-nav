@@ -13,8 +13,8 @@
   const storageKey = 'home-nav.view-preferences';
   function normalize(value) {
     return {
-      accent: Object.hasOwn(accents, value?.accent) ? value.accent : 'green',
-      theme_mode: ['system', 'light', 'dark'].includes(value?.theme_mode) ? value.theme_mode : 'dark',
+      accent: Object.hasOwn(accents, value?.accent) ? value.accent : 'blue',
+      theme_mode: ['system', 'light', 'dark'].includes(value?.theme_mode) ? value.theme_mode : 'system',
       density: value?.density === 'comfortable' ? 'comfortable' : 'compact',
       collapsed: Array.isArray(value?.collapsed) ? value.collapsed.filter(id => typeof id === 'string') : [],
     };
@@ -23,9 +23,9 @@
     try { return normalize(JSON.parse(storage.getItem(storageKey) || '{}')); } catch (_) { return normalize(null); }
   }
   function resolvedMode(mode, systemDark) { return mode === 'system' ? (systemDark ? 'dark' : 'light') : mode; }
-  function backgroundColor(appearance, mode) {
+  function backgroundColor(appearance) {
     const color = appearance.background_color || '#000000';
-    return /^#(?:000|000000)$/i.test(color) && mode === 'light' ? '#f2f5f3' : color;
+    return /^#(?:000|000000)$/i.test(color) ? 'var(--page)' : color;
   }
   const api = { accents, storageKey, normalize, read, resolvedMode, backgroundColor };
   if (typeof window === 'undefined') { module.exports = api; return; }
@@ -44,7 +44,7 @@
     if (document.body) document.body.dataset.density = current.density;
     root.style.setProperty('--accent', mode === 'dark' ? palette.dark : palette.strong);
     root.style.setProperty('--primary', mode === 'dark' ? palette.dark : palette.primary);
-    root.style.setProperty('--primary-hover', mode === 'dark' ? palette.dark : palette.hover);
+    root.style.setProperty('--primary-hover', mode === 'dark' ? 'color-mix(in srgb, var(--primary) 85%, #ffffff)' : palette.hover);
     root.style.setProperty('--on-accent', mode === 'dark' ? '#050607' : palette.onPrimary);
     document.dispatchEvent(new CustomEvent('home-nav-themechange'));
   }

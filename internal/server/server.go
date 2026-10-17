@@ -52,9 +52,10 @@ type LoginData struct {
 }
 
 type SetupData struct {
-	Title   string
-	Error   string
-	Allowed bool
+	AssetVersion string
+	Title        string
+	Error        string
+	Allowed      bool
 }
 
 type ServiceUpdateRequest struct {
@@ -676,6 +677,7 @@ func (s *Server) renderLogin(w http.ResponseWriter, data LoginData) {
 }
 
 func (s *Server) renderSetup(w http.ResponseWriter, data SetupData) {
+	data.AssetVersion = uiAssetVersion
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.setupTpl.Execute(w, data)
 }
@@ -1475,17 +1477,14 @@ const setupTemplate = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>首次设置 - {{.Title}}</title>
+  <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
+  <link rel="stylesheet" href="/assets/theme.css?v={{.AssetVersion}}">
   <style>
     :root {
-      --bg: #050505;
-      --surface: rgba(24,24,27,.82);
-      --field: rgba(255,255,255,.08);
-      --line: rgba(255,255,255,.13);
-      --text: #f7f7f8;
-      --muted: #b9bac3;
-      --accent: #67e0b6;
-      --accent-strong: #8ff0cd;
-      --bad: #ff8b8b;
+      --bg: var(--page);
+      --field: var(--input);
+      --accent-strong: var(--primary-hover);
+      --bad: var(--danger);
     }
     * { box-sizing: border-box; }
     html { min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -1495,7 +1494,7 @@ const setupTemplate = `<!doctype html>
       display: grid;
       place-items: center;
       padding: 32px 18px;
-      background: linear-gradient(135deg, #050505, #17171b 54%, #050505);
+      background: var(--bg);
     }
     main {
       width: min(430px, 100%);
@@ -1525,7 +1524,7 @@ const setupTemplate = `<!doctype html>
     input {
       width: 100%;
       min-height: 48px;
-      border: 1px solid transparent;
+      border: 1px solid var(--line-strong);
       border-radius: 8px;
       padding: 0 14px;
       color: var(--text);
@@ -1535,7 +1534,7 @@ const setupTemplate = `<!doctype html>
     }
     input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(103, 224, 182, .15);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
     .password-field {
       position: relative;
@@ -1546,15 +1545,16 @@ const setupTemplate = `<!doctype html>
     }
     button {
       min-height: 48px;
-      border: 1px solid var(--accent);
+      border: 1px solid var(--primary);
       border-radius: 8px;
-      background: var(--accent);
-      color: #050505;
+      background: var(--primary);
+      color: var(--on-accent);
       font-size: 16px;
       cursor: pointer;
       font-weight: 700;
     }
-    button:hover { background: var(--accent-strong); }
+    button:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     .inline-icon { display: inline-grid; place-items: center; width: 1em; height: 1em; line-height: 1; }
     .inline-icon svg { display: block; width: 1em; height: 1em; }
     .inline-icon-fallback { font-weight: 900; }
@@ -1576,7 +1576,7 @@ const setupTemplate = `<!doctype html>
       cursor: pointer;
     }
     .password-toggle:hover {
-      background: rgba(255,255,255,.08);
+      background: var(--hover);
       color: var(--text);
     }
     .password-toggle .inline-icon { font-size: 22px; }
@@ -1673,15 +1673,15 @@ const loginTemplate = `<!doctype html>
     .tool-button .inline-icon { font-size: 22px; }
     .access-mode-control { position: relative; }
     .access-mode-trigger { width: 142px; height: 48px; padding: 0 15px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: var(--accent); background: var(--hover); }
+    .access-mode-trigger:hover, .access-mode-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
     .access-mode-trigger:focus-visible, .access-mode-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .access-mode-chevron { width: 8px; height: 8px; flex: 0 0 auto; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: translateY(-2px) rotate(45deg); }
     .access-mode-trigger[aria-expanded="true"] .access-mode-chevron { transform: translateY(2px) rotate(225deg); }
-    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--popover); box-shadow: 0 14px 36px rgba(0,0,0,.42); }
+    .access-mode-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 180px; max-width: calc(100vw - 24px); padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--popover); box-shadow: 0 14px 36px var(--shadow); }
     .access-mode-menu[hidden] { display: none; }
     .access-mode-option { min-height: 36px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 14px; line-height: 1.45; text-align: left; white-space: nowrap; cursor: pointer; }
     .access-mode-option:hover, .access-mode-option:focus-visible { background: var(--hover); }
-    .access-mode-option[aria-checked="true"] { background: var(--accent-soft); font-weight: 600; }
+    .access-mode-option[aria-checked="true"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
     .access-mode-option[aria-checked="true"]:hover, .access-mode-option[aria-checked="true"]:focus-visible { background: var(--accent-soft); }
     .access-mode-option::after { content: ''; width: 6px; height: 10px; margin: -3px 4px 0 0; flex: 0 0 auto; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg); opacity: 0; }
     .access-mode-option[aria-checked="true"]::after { opacity: 1; }
@@ -1724,7 +1724,7 @@ const loginTemplate = `<!doctype html>
     input {
       width: 100%;
       min-height: 48px;
-      border: 1px solid transparent;
+      border: 1px solid var(--line-strong);
       border-radius: 8px;
       padding: 0 14px;
       color: var(--text);
@@ -1745,7 +1745,7 @@ const loginTemplate = `<!doctype html>
     }
     button {
       min-height: 48px;
-      border: 1px solid var(--accent);
+      border: 1px solid var(--primary);
       border-radius: 8px;
       background: var(--primary);
       color: var(--on-accent);
@@ -1753,7 +1753,8 @@ const loginTemplate = `<!doctype html>
       cursor: pointer;
       font-weight: 700;
     }
-    button:hover { background: var(--accent-strong); }
+    button:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     .password-toggle {
       position: absolute;
       top: 50%;

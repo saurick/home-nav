@@ -780,8 +780,7 @@
   $('#delete-service-button').addEventListener('click', () => openDelete('service', field('id').value, service(field('id').value)?.name || field('name').value));
 
   function appearanceStyle(target, appearance, fixed = false) {
-    const mode = document.documentElement.dataset.theme;
-    const color = theme.backgroundColor(appearance, mode);
+    const color = theme.backgroundColor(appearance);
     target.style.backgroundColor = color;
     target.style.setProperty('--heading-surface', appearance.background_image || !/^#(?:000|000000)$/i.test(appearance.background_color) ? 'var(--surface)' : color);
     const alpha = { low: .18, medium: .30, high: .42 }[appearance.background_overlay] || .30;
