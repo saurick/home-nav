@@ -14,7 +14,7 @@
 <body class="home-nav" style="{{.BackgroundCSS}}" data-density="compact" data-background-color="{{.Appearance.BackgroundColor}}" data-background-image="{{.Appearance.BackgroundImage}}" data-background-overlay="{{.Appearance.BackgroundOverlay}}">
   <a class="skip-link" href="#main">跳到服务入口</a>
   <header class="top-tools">
-    <div class="page-heading"><div class="page-brand"><span class="home-symbol">{{icon "mdi:web"}}</span><h1>{{.Title}}</h1></div><span class="navigation-host" id="navigation-host"></span></div>
+    <h1 class="sr-only">{{.Title}}</h1>
     <div class="toolbar">
       <div class="service-search" role="search">
         {{icon "mdi:magnify"}}
@@ -52,10 +52,7 @@
     </div>
   </header>
   <main class="shell" id="main" tabindex="-1">
-    <div class="list-toolbar">
-      <p class="search-summary" id="search-summary" role="status" aria-live="polite"></p>
-      <label class="group-jump" id="group-jump-control" hidden>跳转分组<select id="group-jump" aria-label="跳转分组"><option value="">选择分组</option></select></label>
-    </div>
+    <p class="sr-only" id="search-summary" role="status" aria-live="polite"></p>
     <section class="groups" id="groups">
       <section class="group pinned-group" id="pinned-group" hidden>
         <div class="group-title"><div class="group-heading"><button class="collapse-button icon-action" type="button" data-action="collapse-group" data-group-id="@pinned" aria-label="折叠常用入口" aria-expanded="true">{{icon "mdi:chevron-down"}}</button><h2>{{icon "mdi:star-outline"}}常用入口</h2><span class="group-count"></span></div></div>

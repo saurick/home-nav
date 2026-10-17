@@ -357,7 +357,6 @@
     const pendingOrder = editMode && (sortDirty || sortSaving) ? sortPayload() : null;
     closePopovers();
     document.body.dataset.density = preferences.density;
-    $('#navigation-host').textContent = '当前导航：' + window.location.host;
     $('.edit-hint').textContent = search.value.trim() ? '搜索时可编辑入口；清空搜索后可拖拽排序' : '点击编辑入口，使用拖拽把手调整位置';
     $('#density-button > span:last-child').textContent = '显示密度：' + (preferences.density === 'compact' ? '紧凑' : '舒适');
     const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -409,12 +408,6 @@
     $('#empty-message').textContent = terms.length ? '换个名称或标签试试，或清空搜索查看全部入口。' : '添加一个入口，让常用服务触手可及。';
     $('#empty-add-button').hidden = terms.length > 0;
     $('#empty-clear-button').hidden = terms.length === 0;
-    const jumpGroups = navigation.groups.filter(item => editMode || !item.services.length || item.services.some(entry => !entry.pinned));
-    const jumpOptions = jumpGroups.map(item => new Option(item.name, item.id));
-    if (pinned.length && !editMode) jumpOptions.unshift(new Option('常用入口', pinnedGroupID));
-    $('#group-jump-control').hidden = jumpOptions.length < 2;
-    const jump = $('#group-jump');
-    jump.replaceChildren(new Option('选择分组', ''), ...jumpOptions);
     updateAccessMode();
     updateSelection();
     if (groupsDialog.open && groupForm.hidden && !groupSortDirty) renderGroupManager();
@@ -432,7 +425,7 @@
       $('.icon-button', visible[selection]).setAttribute('aria-current', 'true');
       search.setAttribute('aria-activedescendant', $('.icon-button', visible[selection]).id);
     } else search.removeAttribute('aria-activedescendant');
-    $('#search-summary').textContent = search.value.trim() ? '找到 ' + visible.length + ' 个入口' + (visible.length ? ' · ↑↓选择，Enter ' + (editMode ? '编辑' : '打开') : '') : allServices().length + ' 个入口 · ' + navigation.groups.length + ' 个分组';
+    $('#search-summary').textContent = search.value.trim() ? '找到 ' + visible.length + ' 个入口' + (visible.length ? ' · ↑↓选择，Enter ' + (editMode ? '编辑' : '打开') : '') : '';
   }
   search.addEventListener('input', () => { selection = 0; renderNavigation(); });
   function clearSearch() { search.value = ''; selection = 0; renderNavigation(); search.focus({ preventScroll: true }); }
@@ -536,14 +529,6 @@
     showToast('已切换为' + (preferences.density === 'compact' ? '紧凑' : '舒适') + '显示。');
   });
   $('#refresh-navigation-button').addEventListener('click', () => { closePopovers(); reloadNavigation(); });
-  $('#group-jump').addEventListener('change', event => {
-    const id = event.target.value;
-    if (!id) return;
-    search.value = '';
-    preferences.collapsed = preferences.collapsed.filter(value => value !== id);
-    savePreferences(); renderNavigation();
-    (id === pinnedGroupID ? pinnedGroup : groupNodes.get(id))?.scrollIntoView({ behavior: 'instant', block: 'start' });
-  });
 
   function updateHealthFields(clear = false) {
     const type = field('health_type').value;

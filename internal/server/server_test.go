@@ -109,7 +109,7 @@ func TestIndexIncludesAccessModeMenu(t *testing.T) {
 	}
 }
 
-func TestIndexRendersCompactBrandHeading(t *testing.T) {
+func TestIndexKeepsTitleAccessibleWithoutVisibleHeading(t *testing.T) {
 	srv, err := New(writeTempConfig(t, publicExampleConfig(t)))
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -126,8 +126,8 @@ func TestIndexRendersCompactBrandHeading(t *testing.T) {
 	if !strings.Contains(body, "<title>Home</title>") {
 		t.Fatal("index should keep the configured browser title")
 	}
-	if !strings.Contains(body, `<div class="page-heading">`) || !strings.Contains(body, "<h1>Home</h1>") {
-		t.Fatal("index should render the configured title in the compact brand heading")
+	if !strings.Contains(body, `<h1 class="sr-only">Home</h1>`) {
+		t.Fatal("index should keep the configured heading available to assistive technology")
 	}
 }
 
