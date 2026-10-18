@@ -11,6 +11,9 @@ test('existing density and collapsed groups survive adding appearance preference
   for (const raw of ['invalid', 'null', '[]', '{"accent":"constructor","theme_mode":"invalid","density":"bad"}']) {
     assert.deepEqual(theme.read({ getItem: () => raw }), theme.normalize(null));
   }
+  for (const accent of ['green', 'yellow', 'purple', 'teal', 'mauve']) {
+    assert.equal(theme.read({ getItem: () => JSON.stringify({ accent }) }).accent, accent);
+  }
 });
 
 test('missing preferences and restore defaults use blue, system mode, and compact density', () => {
@@ -42,14 +45,15 @@ function luminance(hex) {
   return values[0] * .2126 + values[1] * .7152 + values[2] * .0722;
 }
 function contrast(a, b) { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
-test('all six accents keep readable selected text and primary button labels in both modes', () => {
-  assert.equal(Object.keys(theme.accents).length, 6);
+test('all eight accents keep readable selected text and primary button labels in both modes', () => {
+  assert.deepEqual(Object.keys(theme.accents), ['blue', 'green', 'teal', 'yellow', 'pink', 'mauve', 'orange', 'purple']);
   for (const [name, palette] of Object.entries(theme.accents)) {
     assert.ok(contrast(palette.strong, '#ffffff') >= 4.5, name + ' light selected text');
     assert.ok(contrast(palette.primary, palette.onPrimary) >= 4.5, name + ' light button');
     assert.ok(contrast(palette.hover, palette.onPrimary) >= 4.5, name + ' light hovered button');
-    assert.ok(contrast(palette.dark, '#171f2b') >= 4.5, name + ' dark selected text');
+    assert.ok(contrast(palette.dark, '#1b1b1b') >= 4.5, name + ' dark selected text');
     assert.ok(contrast(palette.dark, '#050607') >= 4.5, name + ' dark button');
+    assert.ok(contrast(palette.darkHover, '#050607') >= 4.5, name + ' dark hovered button');
   }
 });
 
@@ -69,6 +73,7 @@ test('browser bootstrap tolerates denied storage and responds to system changes'
       assert.equal(root.dataset.accent, accent);
       assert.equal(styles['--primary'], theme_mode === 'dark' ? palette.dark : palette.primary);
       assert.equal(styles['--accent'], theme_mode === 'dark' ? palette.dark : palette.strong);
+      assert.equal(styles['--primary-hover'], theme_mode === 'dark' ? palette.darkHover : palette.hover);
       assert.equal(styles['--on-accent'], theme_mode === 'dark' ? '#050607' : palette.onPrimary);
     }
   }

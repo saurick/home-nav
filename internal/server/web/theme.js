@@ -1,14 +1,16 @@
 'use strict';
 
 (() => {
-  // Keep the six named accents aligned with Plush's appearance palette.
+  // Keep named accents aligned with Plush's appearance palette.
   const accents = Object.freeze({
-    blue: { label: '蓝色', primary: '#0a66c2', strong: '#0b4f96', hover: '#0858aa', dark: '#75b9ff', onPrimary: '#ffffff' },
-    green: { label: '绿色', primary: '#16834f', strong: '#0b633a', hover: '#0f6e41', dark: '#70dfa1', onPrimary: '#ffffff' },
-    yellow: { label: '黄色', primary: '#f2b515', strong: '#755400', hover: '#db9f00', dark: '#ffd866', onPrimary: '#231f13' },
-    pink: { label: '粉色', primary: '#c83b82', strong: '#98245e', hover: '#ac2b6b', dark: '#ff91c3', onPrimary: '#ffffff' },
-    orange: { label: '橙色', primary: '#c74d0d', strong: '#943a08', hover: '#aa3f08', dark: '#ff9b61', onPrimary: '#ffffff' },
-    purple: { label: '紫色', primary: '#7650c7', strong: '#55349c', hover: '#6240ad', dark: '#b79aff', onPrimary: '#ffffff' },
+    blue: { label: '蓝色', primary: '#0a66c2', strong: '#0b4f96', hover: '#0858aa', dark: '#75b9ff', darkHover: '#8ac4ff', onPrimary: '#ffffff' },
+    green: { label: '橄榄绿', primary: '#5e793e', strong: '#49632e', hover: '#506a34', dark: '#a5bc87', darkHover: '#b3c699', onPrimary: '#ffffff' },
+    teal: { label: '青绿', primary: '#257f7c', strong: '#1c6260', hover: '#1f6c69', dark: '#7ad6cf', darkHover: '#8edcd6', onPrimary: '#ffffff' },
+    yellow: { label: '橙金', primary: '#9b6429', strong: '#78501f', hover: '#865522', dark: '#f1c18b', darkHover: '#f3ca9c', onPrimary: '#ffffff' },
+    pink: { label: '粉色', primary: '#c83b82', strong: '#98245e', hover: '#ac2b6b', dark: '#ff91c3', darkHover: '#ffa2cc', onPrimary: '#ffffff' },
+    mauve: { label: '藕紫', primary: '#a34f91', strong: '#7d3b6f', hover: '#8e437e', dark: '#e4a3d7', darkHover: '#e8b1dd', onPrimary: '#ffffff' },
+    orange: { label: '橙色', primary: '#c74d0d', strong: '#943a08', hover: '#aa3f08', dark: '#ff9b61', darkHover: '#ffaa79', onPrimary: '#ffffff' },
+    purple: { label: '灰紫', primary: '#666582', strong: '#50506c', hover: '#595872', dark: '#bab8dc', darkHover: '#c4c3e1', onPrimary: '#ffffff' },
   });
   const storageKey = 'home-nav.view-preferences';
   function normalize(value) {
@@ -44,7 +46,7 @@
     if (document.body) document.body.dataset.density = current.density;
     root.style.setProperty('--accent', mode === 'dark' ? palette.dark : palette.strong);
     root.style.setProperty('--primary', mode === 'dark' ? palette.dark : palette.primary);
-    root.style.setProperty('--primary-hover', mode === 'dark' ? 'color-mix(in srgb, var(--primary) 85%, #ffffff)' : palette.hover);
+    root.style.setProperty('--primary-hover', mode === 'dark' ? palette.darkHover : palette.hover);
     root.style.setProperty('--on-accent', mode === 'dark' ? '#050607' : palette.onPrimary);
     document.dispatchEvent(new CustomEvent('home-nav-themechange'));
   }
