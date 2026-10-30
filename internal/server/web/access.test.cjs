@@ -80,3 +80,14 @@ test('pin updates keep source URLs without resubmitting derived ownership', () =
   assert.equal(original.health.type, 'disabled');
   assert.equal(original.tags.length, 1);
 });
+
+
+test('domain-only internal entries stay local while blocked direct ports retain external fallback', () => {
+  const ctx = context();
+  const domainOnly = { ...service, internal_url: '', internal_access_url: '' };
+  assert.equal(ctx.preferredEntry(domainOnly).url, service.internal_domain_url);
+  assert.equal(ctx.preferredEntry(domainOnly).type, 'internal_domain');
+  assert.equal(ctx.preferredEntry(domainOnly).unavailable, false);
+  assert.equal(ctx.preferredEntry({ ...service, internal_access_url: '' }).url, service.external_url);
+  assert.equal(ctx.preferredEntry(domainOnly, 'external').url, service.external_url);
+});

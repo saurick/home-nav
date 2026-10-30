@@ -84,7 +84,8 @@
     return type === 'internal' && Object.hasOwn(item, 'internal_access_url') ? item.internal_access_url : item[urlFields[type]];
   }
   function preferredEntry(item, mode = accessMode) {
-    const order = mode === 'internal' ? (navigation.default_access_mode === 'internal' ? ['internal', 'external', 'internal_domain'] : ['internal', 'internal_domain', 'external']) : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
+    const restrictedDirect = navigation.default_access_mode === 'internal' && item.internal_url && !entryURL(item, 'internal');
+    const order = mode === 'internal' ? (restrictedDirect ? ['internal', 'external', 'internal_domain'] : ['internal', 'internal_domain', 'external']) : mode === 'internal_domain' ? ['internal_domain', 'internal', 'external'] : ['external', 'internal', 'internal_domain'];
     const type = order.find(candidate => entryURL(item, candidate));
     const unavailable = Boolean(item[urlFields[mode]] && !entryURL(item, mode));
     return { type: type || '', url: type ? entryURL(item, type) : '', fallback: Boolean(type && type !== mode), unavailable, warning: unavailable || !type };
