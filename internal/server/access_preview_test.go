@@ -47,6 +47,7 @@ func TestAccessPreviewUsesSaveRulesWithoutWritingConfig(t *testing.T) {
 		}
 	}
 	for _, tt := range []struct{ raw, host, want string }{
+		{"http://home-lan.example.test:5001/", "home-lan.example.test", "http://192.168.10.10:5001/"},
 		{"http://home-lan.example.test:8090/", "10.33.4.5", ""},
 		{"http://home-lan.example.test:8090/", "100.123.4.5", "http://100.123.4.5:8090/"},
 		{"https://other-device.example.test/", "10.33.4.5", "https://other-device.example.test/"},
@@ -65,7 +66,7 @@ func TestAccessPreviewUsesSaveRulesWithoutWritingConfig(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, request)
 	var got serviceAccessPreview
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.InternalAccessURL != "http://home-lan.example.test:5001/" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.InternalAccessURL != "http://192.168.10.10:5001/" {
 		t.Fatal("preview trusted a forwarded host")
 	}
 	after, _ := os.ReadFile(path)

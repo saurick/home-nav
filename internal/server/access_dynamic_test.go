@@ -12,7 +12,7 @@ import (
 
 func dynamicAccess() AccessConfig {
 	return AccessConfig{
-		HomeHost: "home-lan.example.test", DefaultPorts: []int{80, 5001, 9091},
+		HomeHost: "home-lan.example.test", HomeIP: "192.168.10.10", DefaultPorts: []int{80, 5001, 9091},
 		NetworkPorts: map[string][]int{
 			"100.64.0.0/10":   {80, 5001, 8090, 9091},
 			"192.168.0.0/16":  {80, 443, 5001, 8090, 9091},
@@ -34,7 +34,8 @@ func TestHomeHostFollowsChangingAddresses(t *testing.T) {
 	for _, tt := range []struct{ host, raw, want string }{
 		{"[fd7a:115c:a1e0::123]:3002", "http://home-lan.example.test:5001/", "http://[fd7a:115c:a1e0::123]:5001/"},
 		{"[fd00:23::21]", "http://home-lan.example.test/", "http://[fd00:23::21]/"},
-		{"HOME-LAN.EXAMPLE.TEST.:3002", raw, raw},
+		{"HOME-LAN.EXAMPLE.TEST.:3002", raw, "http://192.168.10.10:5001/path?keep=%2F&hostname=192.168.10.10&port=9097#view"},
+		{"home-lan.example.test", "http://home-lan.example.test:8090/", "http://192.168.10.10:8090/"},
 		{"100.90.0.23", "http://home-lan.example.test:8090/_/", "http://100.90.0.23:8090/_/"},
 		{"10.32.0.23", "http://home-lan.example.test:8090/", ""},
 		{"192.168.10.5", "https://home-lan.example.test/", "https://192.168.10.5/"},
@@ -49,7 +50,7 @@ func TestHomeHostFollowsChangingAddresses(t *testing.T) {
 		}
 	}
 	for _, host := range []string{"home.example.test", "home-lan.example.test.evil.test", "10.0.0.1.example.test", "100.63.255.255", "100.128.0.1", "8.8.8.8", "127.0.0.1", "0.0.0.0", "169.254.1.1", "[::1]", "[fe80::1%eth0]", "[::ffff:10.0.0.1]", "[2001:db8::1]"} {
-		if got := a.internalURL(raw, host); got != raw || a.defaultMode(host) != "external" {
+		if got := a.internalURL(raw, host); got != "http://192.168.10.10:5001/path?keep=%2F&hostname=192.168.10.10&port=9097#view" || a.defaultMode(host) != "external" {
 			t.Errorf("unexpected internal host classification for %q: %q", host, got)
 		}
 	}
@@ -58,7 +59,36 @@ func TestHomeHostFollowsChangingAddresses(t *testing.T) {
 	}
 }
 
+func TestHomeDomainNeverBecomesTheDirectAddress(t *testing.T) {
+	a := dynamicAccess()
+	const raw = "http://home-lan.example.test:5001/"
+	a.HomeIP = ""
+	for _, host := range []string{"home-lan.example.test", "home.example.test"} {
+		if got := a.internalURL(raw, host); got != "" {
+			t.Fatalf("missing direct IP must not expose the stable hostname as direct: %q", got)
+		}
+	}
+	if got := a.internalURL(raw, "10.20.30.40:3002"); got != "http://10.20.30.40:5001/" {
+		t.Fatal("IP-based navigation must still work without a default IP")
+	}
+	a.HomeIP = "192.168.20.5"
+	if got := a.internalURL(raw, a.HomeHost); got != "" {
+		t.Fatal("domain navigation must respect the selected IP's network port restrictions")
+	}
+	a.HomeIP = "fd00:23::21"
+	if got := a.internalURL(raw, a.HomeHost); got != "http://[fd00:23::21]:5001/" {
+		t.Fatalf("IPv6 direct IP was not formatted correctly: %q", got)
+	}
+}
+
 func TestHomeHostConfigurationValidation(t *testing.T) {
+	for _, ip := range []string{"home-lan.example.test", "192.168.1.10:8080", "192.168.001.10", "127.0.0.1", "0.0.0.0", "8.8.8.8", "169.254.1.1", "100.128.0.1", "fe80::1%eth0", "::1", "::ffff:192.168.1.10", "fd00:0:0:0:0:0:0:1"} {
+		a := dynamicAccess()
+		a.HomeIP = ip
+		if err := a.validate(); err == nil {
+			t.Errorf("invalid direct IP accepted: %q", ip)
+		}
+	}
 	for _, host := range []string{"192.168.1.10", "https://home.test", "home.test:80", "home.test/path", "HOME.test", "home.test.", "localhost", "-home.test", "home_.test", "home..test", "home.test?x=1"} {
 		if err := (AccessConfig{HomeHost: host}).validate(); err == nil {
 			t.Errorf("invalid home hostname accepted: %q", host)
@@ -83,7 +113,7 @@ func TestHomeHostConfigurationValidation(t *testing.T) {
 			t.Errorf("invalid network ports accepted: %v", ports)
 		}
 	}
-	for _, a := range []AccessConfig{{DefaultPorts: []int{}}, {NetworkPorts: map[string][]int{"10.0.0.0/8": {80}}}} {
+	for _, a := range []AccessConfig{{HomeIP: "192.168.1.10"}, {DefaultPorts: []int{}}, {NetworkPorts: map[string][]int{"10.0.0.0/8": {80}}}} {
 		if err := a.validate(); err == nil {
 			t.Fatal("home_host must be supplied with dynamic port rules")
 		}
@@ -135,6 +165,45 @@ func TestDynamicAccessSurvivesSaveReloadAndClone(t *testing.T) {
 	}
 }
 
+func TestDomainNavigationPreservesSeparateDomainEntry(t *testing.T) {
+	srv, path := accessPreviewServer(t)
+	payload := ServiceUpdateRequest{
+		Name: "App", InternalURL: "http://192.168.9.25:5001/path?hostname=192.168.9.25#view", SameHost: true,
+		InternalDomainURL: "https://app-lan.example.test/path#view", ExternalURL: "https://app.example.test/",
+		Health: ServiceHealthUpdateRequest{Type: "disabled"},
+	}
+	for _, direct := range []string{payload.InternalURL, ""} {
+		payload.InternalURL = direct
+		payload.SameHost = direct != ""
+		body, _ := json.Marshal(payload)
+		rec := uiRequest(t, srv, http.MethodPut, "http://home-lan.example.test/api/services/app", string(body))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("save from domain navigation failed: %s", rec.Body.String())
+		}
+		var result struct {
+			Navigation navigationData `json:"navigation"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		item := result.Navigation.Groups[0].Services[0]
+		wantDirect := ""
+		if direct != "" {
+			wantDirect = "http://192.168.10.10:5001/path?hostname=192.168.10.10#view"
+		}
+		if item.InternalAccessURL != wantDirect || item.InternalDomainURL != payload.InternalDomainURL || item.ExternalURL != payload.ExternalURL {
+			t.Fatalf("direct and domain entries became mixed or stale: %#v", item)
+		}
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Access.HomeIP != "192.168.10.10" || cfg.Groups[0].Services[0].InternalDomainURL != payload.InternalDomainURL {
+			t.Fatal("save changed the direct IP configuration or domain entry")
+		}
+	}
+}
+
 func TestDynamicNavigationAcrossRequestsAndEdits(t *testing.T) {
 	path := writeTempConfig(t, authTestConfig())
 	cfg, err := LoadConfig(path)
@@ -159,6 +228,9 @@ func TestDynamicNavigationAcrossRequestsAndEdits(t *testing.T) {
 			t.Fatal("login default did not follow changing origin")
 		}
 		want := "http://" + host + ":5001/path?hostname=" + host + "#view"
+		if host == cfg.Access.HomeHost {
+			want = "http://192.168.10.10:5001/path?hostname=192.168.10.10#view"
+		}
 		for _, endpoint := range []string{"/", "/api/navigation"} {
 			rec := uiRequest(t, srv, http.MethodGet, base+endpoint, "")
 			if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"internal_access_url":"`+want+`"`) {
@@ -203,7 +275,7 @@ func TestDynamicNavigationAcrossRequestsAndEdits(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.DefaultAccessMode != "external" || data.Groups[0].Services[0].InternalAccessURL != "http://home-lan.example.test:8090/" {
+	if data.DefaultAccessMode != "external" || data.Groups[0].Services[0].InternalAccessURL != "http://192.168.10.10:8090/" {
 		t.Fatal("forwarded host changed the requested origin")
 	}
 }

@@ -41,7 +41,6 @@
           <div class="popover tools-menu" id="tools-menu" role="menu" aria-label="更多操作" hidden>
             <button id="open-groups-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:folder-cog-outline"}}分组管理</button>
             <button id="open-gallery-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:image-multiple-outline"}}图库</button>
-            <button id="refresh-navigation-button" type="button" role="menuitem" tabindex="-1">{{icon "mdi:arrow-down"}}重新读取列表</button>
             {{if .Auth.Enabled}}<form method="post" action="/logout"><button type="submit" role="menuitem" tabindex="-1">{{icon "mdi:logout"}}退出登录</button></form>{{end}}
           </div>
         </div>
@@ -86,7 +85,7 @@
         <fieldset class="address-section"><legend>访问地址 <span class="required">*</span></legend><p class="help">至少填写一种地址；缺少优先地址时，会使用其他已配置地址。</p><div id="primary-address"></div><div class="form-grid" id="secondary-addresses"></div></fieldset>
         <div id="address-field-source" hidden>
           <div class="field" data-address="external"><label for="service-external">外网地址</label><input id="service-external" name="external_url" type="url" placeholder="https://example.com" autocomplete="off"></div>
-          <div class="field" data-address="internal"><label for="service-internal">内网直连地址</label><input id="service-internal" name="internal_url" type="url" placeholder="http://设备地址:端口" autocomplete="off"><label class="check-field same-host-field"><input id="service-same-host" name="same_host" type="checkbox"><span>与导航部署在同一台服务器<small id="same-host-help">直连地址随导航变化；独立设备使用自己的地址。</small></span></label></div>
+          <div class="field" data-address="internal"><label for="service-internal">内网直连地址</label><input id="service-internal" name="internal_url" type="url" placeholder="http://设备IP:端口" autocomplete="off"><label class="check-field same-host-field"><input id="service-same-host" name="same_host" type="checkbox"><span>与导航部署在同一台服务器<small id="same-host-help">使用服务器 IP 直连；独立设备使用自己的 IP。</small></span></label></div>
           <div class="field" data-address="internal_domain"><label for="service-domain">内网域名地址</label><input id="service-domain" name="internal_domain_url" type="url" placeholder="https://service-lan.example.com" autocomplete="off"></div>
         </div>
         <div class="address-preview" id="address-preview" aria-live="polite"><span id="address-preview-label">当前会打开的地址</span><output id="address-preview-url">填写地址后可预览</output><p class="help" id="address-preview-note"></p></div>

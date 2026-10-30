@@ -39,6 +39,9 @@ func renderConfigYAML(cfg *Config) string {
 		line(&b, 0, "access:")
 		if cfg.Access.HomeHost != "" {
 			line(&b, 1, "home_host: %s", yamlString(cfg.Access.HomeHost))
+			if cfg.Access.HomeIP != "" {
+				line(&b, 1, "home_ip: %s", yamlString(cfg.Access.HomeIP))
+			}
 			if cfg.Access.DefaultPorts != nil {
 				ports, _ := json.Marshal(cfg.Access.DefaultPorts)
 				line(&b, 1, "default_ports: %s", ports)

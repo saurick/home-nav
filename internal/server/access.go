@@ -12,7 +12,9 @@ import (
 
 type AccessConfig struct {
 	// HomeHost is a stable DNS name identifying services on the navigation host.
-	HomeHost     string           `yaml:"home_host,omitempty"`
+	HomeHost string `yaml:"home_host,omitempty"`
+	// HomeIP is the explicit direct address when navigation is opened by domain.
+	HomeIP       string           `yaml:"home_ip,omitempty"`
 	DefaultPorts []int            `yaml:"default_ports,omitempty"`
 	NetworkPorts map[string][]int `yaml:"network_ports,omitempty"`
 	// Explicit IP aliases remain supported for configurations without a stable name.
@@ -25,8 +27,14 @@ func (a AccessConfig) validate() error {
 		if !validHomeHost(a.HomeHost) {
 			return fmt.Errorf("配置错误: access.home_host 必须是小写域名，不含协议、端口或路径")
 		}
-	} else if a.DefaultPorts != nil || len(a.NetworkPorts) > 0 {
-		return fmt.Errorf("配置错误: access.default_ports 和 network_ports 需要 home_host")
+	} else if a.HomeIP != "" || a.DefaultPorts != nil || len(a.NetworkPorts) > 0 {
+		return fmt.Errorf("配置错误: access.home_ip、default_ports 和 network_ports 需要 home_host")
+	}
+	if a.HomeIP != "" {
+		ip, err := netip.ParseAddr(a.HomeIP)
+		if err != nil || ip.Zone() != "" || ip.Is4In6() || ip.String() != a.HomeIP || !internalNetwork(netip.PrefixFrom(ip, ip.BitLen())) {
+			return fmt.Errorf("配置错误: access.home_ip 必须是不含端口的规范内网 IP 地址")
+		}
 	}
 	if err := validateAccessPorts("default_ports", a.DefaultPorts); err != nil {
 		return err
@@ -126,7 +134,7 @@ func (a AccessConfig) homeTarget(requestHost string) string {
 	}
 	host := accessRequestHost(requestHost)
 	if strings.EqualFold(strings.TrimSuffix(host, "."), a.HomeHost) {
-		return a.HomeHost
+		return a.HomeIP
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil || ip.Zone() != "" || ip.Is4In6() {
@@ -157,6 +165,9 @@ func (a AccessConfig) defaultMode(requestHost string) string {
 	if a.homeTarget(requestHost) != "" {
 		return "internal"
 	}
+	if a.HomeHost != "" && strings.EqualFold(strings.TrimSuffix(accessRequestHost(requestHost), "."), a.HomeHost) {
+		return "internal"
+	}
 	if _, target := a.requestAlias(requestHost); target != "" {
 		return "internal"
 	}
@@ -170,7 +181,14 @@ func (a AccessConfig) internalURL(raw, requestHost string) string {
 	}
 	// The stable hostname identifies the machine. An arbitrary private service URL
 	// never becomes a same-host URL merely because its IP shares a network prefix.
-	if target := a.homeTarget(requestHost); target != "" && strings.EqualFold(u.Hostname(), a.HomeHost) {
+	if a.HomeHost != "" && strings.EqualFold(u.Hostname(), a.HomeHost) {
+		target := a.homeTarget(requestHost)
+		if target == "" {
+			target = a.HomeIP
+		}
+		if target == "" {
+			return ""
+		}
 		ports := a.DefaultPorts
 		limited := ports != nil
 		ip, _ := netip.ParseAddr(target)

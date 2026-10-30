@@ -3,9 +3,11 @@ subtitle: 只读入口页，服务状态由后台定时缓存
 check_interval: 30s
 
 # 用稳定域名标识与导航部署在同一台服务器的入口。
-# internal_url 使用这个域名时，内网访问会跟随浏览器当前打开导航的主机地址。
+# internal_url 使用这个域名时，访问链接转换为 IP；内网域名入口独立保留。
 access:
   home_host: home-lan.example.test
+  # 通过域名打开导航时使用的直连 IP；通过内网/VPN IP 打开时跟随当前 IP。
+  home_ip: 192.168.1.10
   # 省略 default_ports 表示不限端口；空列表表示都不可直连。
   default_ports: [5001, 8080]
   # 可按网络覆盖默认端口，最长前缀优先；具体 IP 变化不需要更新这里。

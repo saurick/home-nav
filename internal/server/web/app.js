@@ -128,11 +128,11 @@
       const payload = await response.json().catch(() => null);
       if (response.status === 401) throw new RequestError('请重新登录后再操作，当前填写内容仍保留在页面中。', '', 401);
       if (!response.ok) throw new RequestError(payload?.error || '操作未完成，请稍后重试。', payload?.field || '', response.status);
-      if (!payload) throw new RequestError('暂未收到完整结果，请重新读取列表确认保存状态。');
+      if (!payload) throw new RequestError('暂未收到完整结果，请保留填写内容，再刷新页面确认保存状态。');
       return payload;
     } catch (error) {
       if (error instanceof RequestError) throw error;
-      throw new RequestError(controller.signal.aborted ? '暂未收到操作结果，请重新读取列表确认后再操作。' : '连接中断，请检查网络并重新读取列表确认保存状态。');
+      throw new RequestError(controller.signal.aborted ? '暂未收到操作结果，请保留填写内容，再刷新页面确认。' : '连接中断，请保留填写内容，恢复连接后刷新页面确认保存状态。');
     } finally { clearTimeout(timer); }
   }
   function mutate(url, options) {
@@ -141,7 +141,7 @@
     return result;
   }
   function applyNavigation(data, render = true) {
-    if (!data || !Array.isArray(data.groups)) throw new RequestError('保存结果未能完整读取，请重新读取列表确认。');
+    if (!data || !Array.isArray(data.groups)) throw new RequestError('保存结果未能完整读取，请保留填写内容，再刷新页面确认。');
     const previous = new Map(allServices().map(item => [item.id, item]));
     for (const item of data.groups.flatMap(item => item.services)) {
       if (JSON.stringify(previous.get(item.id)?.health) !== JSON.stringify(item.health)) { delete statuses[item.id]; statusRevision++; }
@@ -153,14 +153,6 @@
     if (render) renderNavigation();
     applyAppearance(navigation.appearance);
     refreshStatus();
-  }
-  async function reloadNavigation() {
-    if ((sortDirty || sortSaving) && !(await saveSort())) return;
-    try {
-      await mutationTail;
-      applyNavigation(await mutate('/api/navigation'));
-      showToast('列表已更新。');
-    } catch (error) { showToast(errorText(error, '列表暂时无法更新，请重试。'), true); }
   }
   function fingerprint(form) {
     return JSON.stringify([...new FormData(form).entries()].filter(([, value]) => typeof value === 'string'));
@@ -619,7 +611,6 @@
     $('#access-mode-button').focus({ preventScroll: true });
     showToast(modeLabels[accessMode] + '优先，缺少时使用其他已配置地址。');
   });
-  $('#refresh-navigation-button').addEventListener('click', () => { closePopovers(); reloadNavigation(); });
 
   function updateHealthFields(clear = false) {
     const type = field('health_type').value;
@@ -669,7 +660,7 @@
         const selected = preferredEntry(preview);
         label.textContent = selected.type ? '当前会打开 · ' + modeLabels[selected.type] + (selected.warning && selected.fallback ? '回退' : '') : '当前会打开的地址';
         output.textContent = selected.url || '暂无可用入口';
-        note.textContent = selected.fallback || !selected.type ? entryHint(selected) : preview.same_host ? '保存稳定主机名，访问时随导航地址变化。' : '使用该服务自己的地址。';
+        note.textContent = selected.fallback || !selected.type ? entryHint(selected) : preview.same_host ? '使用服务器 IP 直连，配置保留稳定主机名。' : '使用该服务自己的地址。';
         panel.classList.toggle('is-fallback', selected.warning);
       } catch (error) {
         if (revision !== accessPreviewRevision || !editDialog.open) return;
@@ -692,7 +683,7 @@
   async function openService(id = '', groupID = '') {
     if ((sortDirty || sortSaving) && !(await saveSort())) return showToast('请先保存或放弃未完成的排序。', true);
     const item = service(id);
-    if (id && !item) return showToast('该入口已被移除，请重新读取列表。', true);
+    if (id && !item) return showToast('该入口已被移除，请刷新页面。', true);
     editForm.reset(); clearErrors(editForm);
     const values = { id, name: item?.name || '', group_id: item?.group_id || groupID || navigation.groups[0]?.id || '', description: item?.description || '', icon: item?.icon || '', icon_text: item?.icon_text || '', external_url: item?.external_url || '', internal_url: item?.internal_url || '', internal_domain_url: item?.internal_domain_url || '', tags: (item?.tags || []).join(', '), notes: item?.notes || '', health_type: item?.health.type || 'disabled', health_url: item?.health.url || '', health_address: item?.health.address || '', health_expect_status: item?.health.expect_status || '', health_timeout: item?.health.timeout || '2s' };
     field('group_id').replaceChildren(...navigation.groups.map(item => new Option(item.name, item.id)));
@@ -700,7 +691,7 @@
     field('pinned').checked = Boolean(item?.pinned);
     field('same_host').checked = Boolean(item?.same_host);
     field('same_host').disabled = !navigation.home_host;
-    $('#same-host-help').textContent = navigation.home_host ? '直连地址随导航变化；独立设备使用自己的地址。' : '尚未启用同机跟随，可填写服务自身地址。';
+    $('#same-host-help').textContent = navigation.home_host ? '使用服务器 IP 直连；独立设备使用自己的 IP。' : '尚未启用同机跟随，可填写服务自身 IP。';
     originalInternalURL = values.internal_url;
     $('#primary-address').replaceChildren(addressFields.get('internal'));
     $('#secondary-addresses').replaceChildren(...['internal_domain', 'external'].map(mode => addressFields.get(mode)));
