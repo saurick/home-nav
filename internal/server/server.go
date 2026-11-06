@@ -1477,9 +1477,9 @@ func (s *Server) prewarmIconCache(cfg *Config) {
 }
 
 const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#141414"/>
-  <path d="M17 20h30v24H17z" fill="none" stroke="#f7f7f7" stroke-width="5" stroke-linejoin="round"/>
-  <path d="M24 27h4v10h-4zm8 0h4v10h-4zm8 0h4v10h-4z" fill="#67e0b6"/>
+  <rect width="64" height="64" rx="15" fill="#1559d6"/>
+  <path d="M13 30 32 14 51 30M20 27v23h24V27" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 50V36h8v14" fill="none" stroke="white" stroke-width="4" stroke-linejoin="round"/>
 </svg>`
 
 const setupTemplate = `<!doctype html>
@@ -1657,7 +1657,7 @@ const loginTemplate = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 - {{.Title}}</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg?v=409fa482dd89" type="image/svg+xml">
   <script src="/assets/theme.js?v={{.AssetVersion}}"></script>
   <link rel="stylesheet" href="/assets/theme.css?v={{.AssetVersion}}">
   <style>
