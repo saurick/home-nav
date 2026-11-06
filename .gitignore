@@ -9,6 +9,10 @@
 # Local runtime config
 /services.yaml
 /services.local.yaml
+/.env
+/deploy/.env
+/data/
+/deploy/data/
 
 # Logs
 *.log

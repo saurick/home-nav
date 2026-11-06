@@ -1,0 +1,14 @@
+services:
+  home-nav:
+    image: ${HOME_NAV_IMAGE:?请先在 .env 中设置 HOME_NAV_IMAGE，包含 Docker Hub 用户名和版本号}
+    user: "${HOME_NAV_USER:-0:0}"
+    restart: unless-stopped
+    ports:
+      - "${HOME_NAV_BIND:-0.0.0.0}:${HOME_NAV_PORT:-8080}:8080"
+    command: ["-addr", "0.0.0.0:8080", "-config", "/data/services.yaml"]
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false

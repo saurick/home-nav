@@ -2,6 +2,8 @@
 
 Home Nav 镜像在开发机或 CI 构建，目标服务器只加载镜像和启动容器。私有 `services.yaml`、uploads 与图标缓存通过挂载持久化，更新镜像时保留这些目录。镜像标签绑定 Git commit，部署前保留原 compose 与镜像作为回滚点。
 
+通过 Docker Hub 分发镜像、首次安装和版本升级见 [Docker Hub 使用与发布](dockerhub.md)。[本地 Compose](docker-compose.yml) 用于自行构建的 `home-nav:local`；[Docker Hub Compose](docker-compose.hub.yml) 使用指定的镜像地址，将运行配置、上传图片和图标缓存统一持久化到 `data/`。
+
 ## 直连地址升级
 
 1. 部署前保存当前镜像、Compose 和私有 `services.yaml` 的摘要与备份。确认导航服务器实际局域网 IP 后，配置 `access.home_ip`；不要把真实地址提交到仓库。`home_host` 仍标识同机服务，服务 URL 与监测目标无需逐条替换。

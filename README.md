@@ -43,13 +43,17 @@ curl http://127.0.0.1:8080/healthz
 
 ## Docker
 
+通过 Docker Hub 安装无需下载源码或安装 Go。镜像支持 `linux/amd64` 和 `linux/arm64` 的构建；安装、持久化目录、升级与发布步骤见 [Docker Hub 使用与发布](deploy/dockerhub.md)。实际已发布的版本以 Docker Hub 仓库为准。
+
+本地构建与运行：
+
 ```bash
 docker build -t home-nav:local .
 cp config.example.yaml services.yaml
 docker run --rm -p 8080:8080 -v "$PWD/services.yaml:/app/services.yaml" home-nav:local
 ```
 
-或使用 compose：
+或使用本地镜像的 Compose：
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d
