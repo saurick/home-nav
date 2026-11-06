@@ -69,6 +69,8 @@ cat /var/lib/home-nav-lan-cert-sync/last-result.json
 
 复用现有 uploads 挂载，无需增加图标代理或构建应用镜像。安装脚本只修改匹配入口的 `icon` 标量；未知名称保持现状。自建入口名称无法识别产品时，使用不提交到仓库的 JSON `--service-map` 将入口 ID 映射到图标目录中的 `name`。资源文件名包含内容摘要，避免浏览器沿用旧缓存。Python 依赖见 [requirements.txt](requirements.txt)，可在独立虚拟环境安装。
 
+Plush 研发工作台使用 `plush-workbench`（紫底闪电），永绅客户入口使用 `yoyoosun`（蓝底“永”字）；客户演示、测试与正式业务共用客户图标。两项均通过私有 `--service-map` 绑定入口 ID，通用 `erp` 仍用于未配置客户品牌的产品入口。项目图标变化时，从 manifest 记录的源码路径复制已提交的 SVG，更新 `source_revision`、`sha256` 和 `size` 后重新安装。只更新部分图标时，使用仅包含所需记录与资源文件的目录作为 `--assets-dir`，并核对计划中只有本次目标入口。
+
 1. 从已提交版本取出 `deploy/install-official-icons.py` 与 `deploy/official-icons/`，确认真实配置、uploads 主机目录和当前配置摘要。先执行只读计划：
 
    ```sh

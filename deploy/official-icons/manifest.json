@@ -431,6 +431,28 @@
       "size": 461
     },
     {
+      "name": "plush-workbench",
+      "file": "plush-workbench.svg",
+      "service_name_pattern": "(?!)",
+      "source_note": "Unmodified favicon from the committed Plush Toy ERP workbench source. Private service ID assignments stay outside this repository.",
+      "source_repository": "plush-toy-erp",
+      "source_revision": "3e12ea07730317cad9540e21fb43df2e5676a131",
+      "source_path": "web/src/dev-workbench/assets/favicon-dev.svg",
+      "sha256": "11a40765bb104aa6158c66ba668df01cb3d5a850695854384b2263507e64906e",
+      "size": 239
+    },
+    {
+      "name": "yoyoosun",
+      "file": "yoyoosun.svg",
+      "service_name_pattern": "(?!)",
+      "source_note": "Unmodified public customer favicon from the committed Plush Toy ERP customer configuration. Private service ID assignments stay outside this repository.",
+      "source_repository": "plush-toy-erp",
+      "source_revision": "5ef3ef4827cb042c515683e40c4a0e20c1949d08",
+      "source_path": "config/customers/yoyoosun/public-assets/favicon-yoyoosun.svg",
+      "sha256": "1d142679c7d364a812dcf34350f4ac8d3801e8556c66b4d4610af5bb7be16cb8",
+      "size": 395
+    },
+    {
       "name": "webapp-template",
       "file": "webapp-template.svg",
       "source_url": "https://raw.githubusercontent.com/saurick/webapp-template/a7005777578c923b1909823310afbff74bd0461c/web/public/favicon.svg",
